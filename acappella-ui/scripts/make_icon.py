@@ -78,6 +78,19 @@ def make_splash(path):
     bg.convert("RGB").save(path)
 
 
+def make_web(public_dir):
+    """网页图标：favicon 与触摸图标，同套设计直接缩放。"""
+    icon = vertical_gradient((512, 512), BG_TOP, BG_BOTTOM).convert("RGBA")
+    icon.alpha_composite(glow(draw_logo((512, 512), scale=0.5), radius=18, alpha=110))
+    icon = icon.convert("RGB")
+    for name, size in (
+        ("favicon-32.png", 32),
+        ("icon-192.png", 192),
+        ("apple-touch-icon.png", 180),
+    ):
+        icon.resize((size, size), Image.LANCZOS).save(public_dir / name)
+
+
 def main():
     if "--preview" in sys.argv:
         out = Path(tempfile.gettempdir()) / "icon-preview.png"
@@ -87,6 +100,7 @@ def main():
     make_icon(ASSETS / "icon-only.png")
     make_splash(ASSETS / "splash.png")
     make_splash(ASSETS / "splash-dark.png")
+    make_web(Path(__file__).resolve().parent.parent / "public")
     print("ok:", ASSETS)
 
 
