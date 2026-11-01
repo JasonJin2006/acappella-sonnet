@@ -3,9 +3,7 @@
 // 采集阶段只做一件事：每 1/30 秒跑一次 YIN，得到 {t, midi, clarity, rms}。
 // 转录放在停止之后离线做：中值滤波去毛刺、按音高跳变断句、再按 BPM 量化到半拍。
 // 这样比逐帧在线判断稳，也不会因为一帧误判就把音切错。
-import { YinDetector, yinWindowSize } from './pitch.js'
-import { MultiPitch, fftSizeFor } from './multipitch.js'
-import { magnitudeSpectrum } from './fft.js'
+import { YinDetector, yinWindowSize, freqToMidi } from './pitch.js'
 import { sharedCtx } from './sharedCtx.js'
 import { openMic } from './audioInput.js'
 
@@ -69,7 +67,7 @@ export class HumRecorder {
     this.yin.set(this.buf.subarray(0, this.yinSize))
     const r = this.multi ? this.det.detectMulti(this.yin) : this.det.detect(this.yin)
     const t = (performance.now() - this.t0) / 1000
-    const midi = r.freq > 0 ? 69 + 12 * Math.log2(r.freq / 440) : null
+    const midi = r.freq > 0 ? freqToMidi(r.freq) : null
     const frame = { t, midi, clarity: r.clarity, rms: r.rms, candidates: r.candidates }
     this.frames.push(frame)
     if (this.onFrame) this.onFrame(frame)
@@ -102,47 +100,10 @@ export function framesFromBuffer(buffer, hopMs = HOP_MS, opts = {}) {
     for (let k = 0; k < winSize; k++) sum += win[k] * win[k]
     frames.push({
       t: i / sr,
-      midi: r.freq > 0 ? 69 + 12 * Math.log2(r.freq / 440) : null,
+      midi: r.freq > 0 ? freqToMidi(r.freq) : null,
       clarity: r.clarity,
       rms: Math.sqrt(sum / winSize),
       candidates: r.candidates,
-    })
-  }
-  return frames
-}
-
-// 频谱版：用 MultiPitch 的谐波求和找候选。和弦在时域上没有各自的周期，
-// 但在频域里每个声部的基频是独立的一根峰，所以这条路径才分得开声部。
-export function framesFromBufferSpectral(buffer, hopMs = HOP_MS, opts = {}) {
-  const sr = buffer.sampleRate
-  const data = buffer.getChannelData(0)
-  const size = opts.fftSize || fftSizeFor(sr)
-  const hop = Math.max(1, Math.round((sr * hopMs) / 1000))
-  const mp = new MultiPitch(sr, size)
-  const win = new Float32Array(size)
-  const db = new Float32Array(size / 2 + 1)
-  const maxVoices = opts.maxVoices || 4
-  const frames = []
-  for (let i = 0; i + size <= data.length; i += hop) {
-    let energy = 0
-    for (let k = 0; k < size; k++) {
-      const w = 0.5 - 0.5 * Math.cos((2 * Math.PI * k) / (size - 1))
-      win[k] = data[i + k] * w
-      energy += win[k] * win[k]
-    }
-    const mag = magnitudeSpectrum(win, size)
-    for (let k = 0; k < mag.length; k++) db[k] = 20 * Math.log10(mag[k] + 1e-9)
-    const f0s = mp.estimate(db, maxVoices)
-    frames.push({
-      t: i / sr,
-      midi: f0s.length ? f0s[0].midi : null,
-      clarity: f0s.length ? Math.min(1, (f0s[0].strength || 1) / 8) : 0,
-      rms: Math.sqrt(energy / size),
-      candidates: f0s.map((f) => ({
-        freq: f.freq,
-        midi: f.midi,
-        clarity: Math.min(1, (f.strength || 1) / 8),
-      })),
     })
   }
   return frames

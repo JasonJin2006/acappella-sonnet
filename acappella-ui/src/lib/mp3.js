@@ -13,6 +13,8 @@
 // 所以这里不走 npm import，而是把 lame.all.js 当静态资源用 <script> 加载，
 // 再从 window.lamejs 取。代价是首次导出多一次脚本加载（150 KB，可缓存）。
 
+import { floatToInt16 } from './pcm.js'
+
 let lamePromise = null
 
 function loadLameScript() {
@@ -72,10 +74,7 @@ export async function encodeMp3(channels, sampleRate, kbps = 192) {
 
   const toInt16 = (src) => {
     const out = new Int16Array(src.length)
-    for (let i = 0; i < src.length; i++) {
-      const v = Math.max(-1, Math.min(1, src[i]))
-      out[i] = v < 0 ? v * 0x8000 : v * 0x7fff
-    }
+    for (let i = 0; i < src.length; i++) out[i] = floatToInt16(src[i])
     return out
   }
 

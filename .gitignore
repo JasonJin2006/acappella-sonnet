@@ -3,6 +3,7 @@ node_modules/
 
 # 构建产物（vite / gradle / capacitor 同步副本，均可重新生成）
 acappella-ui/dist/
+acappella-ui/.vite-tmp/
 acappella-ui/android/app/build/
 acappella-ui/android/build/
 acappella-ui/android/app/release/

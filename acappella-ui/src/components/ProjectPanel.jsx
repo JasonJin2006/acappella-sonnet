@@ -166,9 +166,9 @@ export default function ProjectPanel({
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[12px] font-medium">{p.title}</div>
                 <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
-                  {p.parts} 声部 · {Math.round(p.beats / (p.bar || 4))} 小节
-                  {p.takeCount > 0 && ` · ${p.takeCount} 条录音`}
-                  {p.savedAt > 0 && ` · ${fmtTime(p.savedAt)}`}
+                  {p.parts} 声部，{Math.round(p.beats / (p.bar || 4))} 小节
+                  {p.takeCount > 0 && `，${p.takeCount} 条录音`}
+                  {p.savedAt > 0 && `，${fmtTime(p.savedAt)}`}
                 </div>
               </div>
               <button

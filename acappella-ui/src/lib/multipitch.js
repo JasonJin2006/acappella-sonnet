@@ -4,6 +4,8 @@
 // 做法：谐波求和谱（某个 f0 的各次谐波处能量都高 → 它像个基频），
 // 挑一个就把它的谐波从谱里抹掉，再挑下一个，最多 4 个。
 
+import { freqToMidi } from './pitch.js'
+
 // FFT window that keeps the frequency resolution constant across sample rates
 // (~93 ms, the same span as 4096 points at 44.1 kHz). A fixed 4096-point FFT
 // at 96 kHz halves the resolution and degrades the harmonic sum.
@@ -67,7 +69,7 @@ export class MultiPitch {
       const f0 = this.grid[best]
       out.push({
         freq: f0,
-        midi: 69 + 12 * Math.log2(f0 / 440),
+        midi: freqToMidi(f0),
         strength: bestVal / base,      // 相对强度，用来判断谁离麦克风近
       })
       this._kill(f0, n)

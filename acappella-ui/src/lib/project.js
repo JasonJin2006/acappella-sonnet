@@ -18,7 +18,8 @@
 
 // 库名、版本号、建表逻辑统一放在 db.js，和 myScores.js 共用。
 // 两边各自写死版本号会导致「版本低于现有版本」打不开库。
-import { DB_NAME, DB_VER, ensureStores } from './db'
+import { DB_NAME, DB_VER, ensureStores } from './db.js'
+import { interleaveToInt16 } from './pcm.js'
 
 const STORE = 'projects'
 
@@ -44,14 +45,9 @@ export function bufferToPcm(buffer) {
   if (!buffer) return null
   const ch = buffer.numberOfChannels
   const frames = buffer.length
-  const out = new Int16Array(frames * ch)
-  for (let c = 0; c < ch; c++) {
-    const d = buffer.getChannelData(c)
-    for (let i = 0; i < frames; i++) {
-      const v = Math.max(-1, Math.min(1, d[i]))
-      out[i * ch + c] = v < 0 ? v * 0x8000 : v * 0x7fff
-    }
-  }
+  const channels = []
+  for (let c = 0; c < ch; c++) channels.push(buffer.getChannelData(c))
+  const out = interleaveToInt16(channels)
   return {
     pcm: out.buffer,
     frames,
@@ -162,20 +158,4 @@ export async function deleteProject(id) {
     tx.oncomplete = () => resolve()
     tx.onerror = () => reject(tx.error || new Error('删除失败'))
   })
-}
-
-/**
- * 估算工程占用的存储（字节）。用来在界面上提示「录音占了多少空间」。
- */
-export function estimateSize(project) {
-  if (!project) return 0
-  let n = 0
-  try {
-    const { takes, ...rest } = project
-    n += JSON.stringify(rest).length
-    for (const t of takes || []) {
-      if (t.pcm && t.pcm.pcm) n += t.pcm.pcm.byteLength
-    }
-  } catch (e) { /* 忽略 */ }
-  return n
 }

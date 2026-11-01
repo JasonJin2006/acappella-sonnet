@@ -1,5 +1,12 @@
 // 从已验证的单文件版本原样抽离，逻辑未做任何改动
 /* ============ 音高检测：YIN ============ */
+
+// 频率 → 浮点 MIDI。全库只此一份：提示音、哼唱、多基频、采样变调、
+// 录音对齐都要把频率换算成音高，各自写一遍容易出现 440 基准或 0 值处理不一致。
+export function freqToMidi(freq) {
+  return 69 + 12 * Math.log2(Math.max(1e-6, freq) / 440)
+}
+
 class YinDetector{
   constructor(sampleRate, bufSize){
     this.sr = sampleRate;
@@ -82,7 +89,7 @@ class YinDetector{
       if(freq < 45 || freq > 1300) continue;
       out.push({
         freq,
-        midi: 69 + 12*Math.log2(freq/440),
+        midi: freqToMidi(freq),
         clarity: Math.max(0, 1 - cmnd[lag]),
       });
     }

@@ -102,6 +102,8 @@ App 里「创作 → 谱库 → 导入或手写谱面 → 导入」选一个 PDF
 
 ## 运维
 
+服务入口是 `scripts/omr_server.py`，systemd 单元里跑的就是它。参数见 `--help`：`--port` / `--host` / `--work` / `--cert` / `--key` / `--token-file` / `--workers`。
+
 ```bash
 sudo systemctl status sonnet-omr
 sudo systemctl restart sonnet-omr

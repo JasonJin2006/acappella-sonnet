@@ -177,7 +177,7 @@ export default function WaveformEditor({ take, part, ctx, onApply, onClose, them
         <span className="font-medium">{part?.id}</span>
         <span className="text-muted-foreground">
           {duration ? duration.toFixed(2) + ' 秒' : '无音频'}
-          {take?.startBeat != null ? ` · 起点第 ${take.startBeat} 拍` : ''}
+          {take?.startBeat != null ? `，起点第 ${take.startBeat} 拍` : ''}
         </span>
         <Button size="sm" variant="outline" className="ml-auto" onClick={onClose}>完成</Button>
       </div>

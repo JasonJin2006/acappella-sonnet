@@ -81,7 +81,6 @@ const melodyEntries = MELODY_SONGS.map((e) => ({
 }))
 
 export const LIBRARY = melodyEntries
-export const LIBRARY_COUNT = LIBRARY.length
 
 /**
  * 取当前生效的曲库列表：每条都按覆盖层重新解析传统。

@@ -1,0 +1,19 @@
+# 统一换行：源码一律 LF，Windows 批处理保留 CRLF。
+# 不加这一条时 core.autocrlf=true 会让 checkout 出来的文件变成 CRLF，
+# 和 Linux 上构建出来的产物混在一起，git diff 会整文件翻红。
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+gradlew text eol=lf
+
+# 二进制，不做换行与文本合并
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.ogg binary
+*.wav binary
+*.mp3 binary
+*.apk binary
+*.keystore binary

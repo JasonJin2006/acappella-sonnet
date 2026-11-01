@@ -53,32 +53,44 @@ Gradle wrapper 已固定到 8.13（AGP 8.13.0 的最低要求）。本机缓存�
 ```
 src/
   lib/                 ← 算法层，不碰 DOM，可以单独测试
-    pitch.js           YIN 基频提取（单音高）
+    pitch.js           YIN 基频提取（单音高）+ freqToMidi（全库唯一的频率→音高换算）
     multipitch.js      多基频估计（合唱时同时估多个人的音高）
-    follower.js        单声部 Online DTW 跟谱（Follower）+ 团队和弦跟谱（EnsembleFollower）
+    fft.js             迭代式基 2 FFT，离线频谱分析用
+    follower.js        单声部 Online DTW 跟谱（Follower）
     coldstart.js       冷启动定位：攒一段和声走向，一次性全谱对齐
     engine.js          运行时引擎：麦克风 → 每帧数据 → 提示音（Pilot 类）
+    tempo.js           速度表：拍 ↔ 秒换算，支持中途变速
     cue.js             提示音与播放音色（采样优先，采样缺失时退回谐波/共振峰合成）
     samples.js         采样音色库：加载 src/assets/samples 下的采样，按音高变调取最近的一个
+    voicepool.js       AudioNode 池：播放与提示音复用节点，避免每个音新建/销毁
     render.js          离线渲染：整份谱面 → 立体声 PCM（导出 WAV 用）
     fx.js              效果器链：混响 / 声像 / 限幅，播放和导出共用
     export.js          导出：MIDI 文件、WAV 编码、下载与文件名处理
+    pcm.js             浮点采样 → 16-bit PCM（WAV / MP3 / 原生音频 / 工程共用）
     player.js          整谱播放：按拍排期、滚动补音、暂停即淡出
+    nativeaudio.js     原生音频引擎适配层（Android 走原生线程，Web 自动退回 Web Audio）
     hum.js             哼调记谱：录音、断句、量化成谱面音符
     takes.js           多轨录音、按谱面自动对齐、混音播放
+    takescore.js       录音轨 → 多声部谱
     waveform.js        波形编辑：剪切 / 静音 / 淡入淡出 / 增益 / 包络抽取
-    stretch.js         WSOLA 时间伸缩（变速不变调），用于处理成品音频
+    stretch.js         WSOLA 时间伸缩（变速不变调），处理成品音频用，当前无调用方
     automation.js      力度自动化：按小节的力度曲线、插值与压缩
     history.js         撤销/重做：快照栈 + 连续编辑合并
     project.js         工程存取：谱面+编配+录音打包进 IndexedDB
+    db.js              共享的 IndexedDB 库定义
     mp3.js             MP3 编码（lamejs）与重采样
     sharedCtx.js       录音 / 哼唱 / 混音 / 播放共用的 AudioContext
     arranger.js        编配：主旋律 → 多声部（7 种编制），逐小节可选织体，自动推调性与和弦
     library.js         内置曲库：目前只有《欢乐颂》一首示例（旋律经 arranger 生成四声部）
+    libraryTraditions.js 内置曲目的传统覆盖层（用户改过的存 localStorage）
     myScores.js        我的谱：导入的谱面存本机 IndexedDB
+    pack.js            导入包（sonnet-pack JSON）的解析与写入
     music.js           乐理工具 + 文本记谱解析 + MusicXML 解析（含 .mxl 解压）
     musicxml.js        内部格式 → MusicXML（给渲染器用）
     scoreGeometry.js   从 OSMD 排版结果里取音符屏幕坐标
+    traditions.js      演唱传统档案：13 个传统的判定方式与容差
+    omr.js             手机端 PDF 识别：调远程 Audiveris 服务
+    utils.js           Tailwind 类名合并（cn）
   pages/
     FollowPage.jsx     跟谱页：声部胶囊、谱面、当前音气泡、麦克风按钮
     LibraryPage.jsx    谱库页：示例 / 导入 / 文本谱
@@ -87,7 +99,7 @@ src/
   components/
     ScoreView.jsx      五线谱渲染（横向卷轴）+ 叠加层（彩帘条 / 音高曲线）
     PianoRoll.jsx      钢琴卷帘编辑器（拖拽改音高/位置/时值、力度条、增删音）
-    ExportPanel.jsx    导出区（WAV / MusicXML / MIDI）
+    ExportPanel.jsx    导出区（WAV / MP3 / MusicXML / MIDI）
     ChordTrackEditor.jsx 和弦轨 + 力度自动化编辑器
     FxPanel.jsx        效果器参数面板
     ScorePanel.jsx     换谱面板（谱库页复用）
@@ -95,12 +107,31 @@ src/
     RecStage.jsx       录音页：多轨时间轴、对齐微调、混音试听
     WaveformEditor.jsx 波形编辑器：框选后剪切/静音/淡入淡出/增益
     SettingsPanel.jsx  设置条目（设置页复用）
+    TimbreSelect.jsx   音色下拉（按乐器族分组，标注采样音域）
     BottomNav.jsx      底部导航
-    ui/                button / card / select / slider / switch / label / separator
+    ui/                button / card / select / slider / switch / label
   App.jsx              外壳：引擎、状态、页面切换、Android 历史返回
 scripts/
-  gen_test_audio.py    生成测试音频（见"测试"）
+  build.mjs            构建入口（npm run build）
+  build_samples.py     从 MS Basic.sf3 拆采样，生成 src/assets/samples
+  build_pack.py        MusicXML / .mscx → 旋律 JSON
+  build_pack.mjs       旋律 JSON → 导入包（走 arranger 生成四声部）
+  check_pack.mjs       导入包结构校验
   pdf_to_score.py      PDF 经 Audiveris 光学识别转 MusicXML / 导入包
+  omr_server.py        手机端识别服务（部署见 OMR-SERVER.md）
+  OMR-SERVER.md        识别服务的部署、接口与限流
+  jianpu_parser.py     简谱文本解析
+  gen_test_audio.py    生成测试音频（见"测试"）
+  make_icon.py         生成应用图标与启动图（assets/）
+tests/
+  analysis.mjs         复刻引擎每帧的离线分析（30 fps、4096 点频谱）
+  real-audio.mjs       真实录音回归
+  real-eval.mjs        按谱面对齐的真实录音评分
+  rate-check.mjs       采样率敏感性检查（44.1 / 48 / 96 kHz）
+  yin-range.mjs       YIN 在不同采样率下的可达音域
+  smoke.mjs            DOM-free 模块的 Node 冒烟测试
+  score.mjs / wav.mjs  测试用的谱面辅助与 RIFF/WAVE 读取
+  REAL-AUDIO.md        真实录音测试的说明与结果
 ```
 
 ## 数据流
@@ -252,7 +283,7 @@ python scripts/pdf_to_score.py --src "D:/我的谱" --out "D:/我的谱/xml" --p
 - 播放在**当前定位处**开始；点谱面任意位置会从那一拍接着放，谱尾再按一次从第 0 拍开始。
 - 播放和跟唱互斥。按播放会停麦克风，按麦克风会先停播放，并停在你停下的那一拍，接着就能跟唱。
 - 播放引擎独立于提示音：`player.js` 里的 `ScorePlayer` 有自己的 `CueEngine` 和总线限幅，换播放音色不影响跟唱提示音。音色在设置页的「播放」里选，默认「合唱 啊」，另有「合唱 哦」、管风琴、弦乐、钢琴、长笛、木琴。
-- 音色是真实录音采样，来自 MuseScore 4 自带的 MS Basic 音源（MIT 许可，内含 FluidR3 采样），用 `scripts/build_samples.py` 拆成单音 OGG 放进 `src/assets/samples/`，共 60 个采样约 1.5 MB。一个音色按小三度存一个采样，播放时用 `playbackRate` 变调覆盖整个音域。
+- 音色是真实录音采样，来自 MuseScore 4 自带的 MS Basic 音源（MIT 许可，内含 FluidR3 采样），用 `scripts/build_samples.py` 拆成单音 OGG 放进 `src/assets/samples/`，26 种音色共 226 个采样、约 5.7 MB。一个音色按小三度存一个采样，播放时用 `playbackRate` 变调覆盖整个音域。
 - 合唱采样是真的「啊」「哦」衬词录音，四声部各取自己音区附近的采样；采样是单声道，播放时按声部声像铺开。采样没加载好（或某个音高超出采样范围）时，自动退回原来的共振峰合成，第一次发声不会哑。
 - 采样音色的延音靠循环采样中段：跳过起音，在 35%–85% 之间循环，长音不会变成无限拖尾的起音段。打击类（钢琴、木琴）不循环，让采样自然衰减。
 - 混响是一段现场合成的噪声脉冲响应，不加载 IR 文件；四个声部按声像铺开（女高偏左、男低偏右），主旋律比内声部高约 1.6 dB，听得出旋律。
@@ -306,13 +337,13 @@ python scripts/pdf_to_score.py --src "D:/我的谱" --out "D:/我的谱/xml" --p
 
 ### 声部跟踪的两次尝试（都只算部分成功）
 
-为了让合唱录音也能转谱，试了两条路，都留在代码里，界面只露出标注为「实验」的一个。
+为了让合唱录音也能转谱，试了两条路。界面只露出标注为「实验」的一条，另一条的实现已在整理时删除，结论保留在这里。
 
 **一、YIN 多候选 + Viterbi**（`pitch.js` 的 `detectMulti`、`hum.js` 的 `trackLowest`）。把累积均值差分曲线上所有够深的谷都当候选，再用 Viterbi 选一条连续的音高线，每帧最多移动 7 个半音。
 
 失败的根因很干脆：对一段三声部合成和弦（真值 C3、G2、A2、F2 各两秒），某一帧的候选只有一个值 42.8，三个基频一个都不在。时域周期对和弦取的是**共同周期**，和弦根本不存在各自独立的周期，所以候选集本身就是错的。Viterbi 再聪明也救不回来。
 
-**二、频谱谐波求和 + Viterbi**（`fft.js` 的 `magnitudeSpectrum`、`framesFromBufferSpectral`）。自己实现基 2 FFT，把幅度谱转 dB 喂给现有的 `MultiPitch.estimate`，拿到多个基频候选，再走同一套 Viterbi。这条路径在同一段合成和弦上能抓到 C3 和 A2，G2 会漏，还有八度错误。
+**二、频谱谐波求和 + Viterbi**（`fft.js` 的 `magnitudeSpectrum`）。自己实现基 2 FFT，把幅度谱转 dB 喂给 `MultiPitch.estimate`，拿到多个基频候选，再走同一套 Viterbi。这条路径在同一段合成和弦上能抓到 C3 和 A2，G2 会漏，还有八度错误。
 
 真实录音（格鲁吉亚那段 40 秒）上的对比：
 
@@ -375,7 +406,7 @@ python scripts/pdf_to_score.py --src "D:/我的谱" --out "D:/我的谱/xml" --p
 
 ```bash
 cd acappella-ui
-python scripts/build_samples.py            # 全部 26 种音色，约 4.9 MB / 223 个采样
+python scripts/build_samples.py            # 全部 26 种音色，约 5.7 MB / 226 个采样
 python scripts/build_samples.py --timbre choir   # 只重建一个音色（会合并进已有 manifest）
 python scripts/build_samples.py --check    # 只列出可用的音源采样，不写文件
 ```
@@ -668,9 +699,19 @@ const applyAutomationToScore = useCallback((next) => {
 
 - 采样音色：`cue.js` 用 `playbackRate` 把采样变调到目标音高，与时间轴无关
 - 合成音色：直接按频率合成
-- 时间轴：`spb = 60 / (bpm * rate)`，改这个就够了
+- 时间轴：由 `tempo.js` 的 `TempoMap` 统一换算，改 `rate` 就够了
 
 所以不需要对整段音频做时间伸缩——那是对「已录好的成品音频」才需要的技术。
+
+### 中途变速
+
+谱面可以带速度表（`score.tempos = [{ beat, bpm }, ...]`），《Echo》在 1/8/64/73 小节分别标了 65/95/80/95。`TempoMap` 负责三件事：
+
+- `secAt(beat)` / `beatAt(sec)`：拍与秒互转。拍→秒分段线性累加，秒→拍二分查段再段内反解
+- `secPerBeatAt(beat)`：某一拍此刻的秒/拍，跟谱器用它估「这个音该唱多久」
+- `rate`：变速播放时整条表一起缩放，段与段之间的比例不变
+
+播放、导出、进度条、跟谱器都从这一个对象取时间，不再各自写 `60 / bpm`。没有速度表时退化成单速，行为和以前完全一致。
 
 ### 附带实现的 WSOLA
 
@@ -842,12 +883,29 @@ MIDI 的 track name 只用 ASCII（`S - Soprano`），中文声部名放在 inst
 - 蓝牙耳机有 150–300ms 延迟，用"下一音提前预告"补偿，有线耳机最好。
 - 哼唱量化固定半拍，不识别调号、连音线和装饰音；节奏复杂的旋律转录后要在文本谱里手动改。
 - 录音只对齐整体起始拍，不逐音拉伸时值；中途变速的录音仍会对不齐。
-- 录音与哼唱结果只存在内存里，刷新页面或换谱即丢失。
+- 录音与哼唱结果默认只在内存里；要留存得存成工程（设置 → 工程），未保存的部分刷新页面或换谱即丢失。
 - 自动对齐靠音高轨迹，纯噪声或整段休止的录音找不到可靠起点，界面会提示"位置可能不唯一"。
-- 播放只有音高和时值，没有力度、连音和渐强（采样本身带原始力度，但界面不暴露力度编辑）。合唱采样是「啊」「哦」衬词，唱不出歌词；要真正唱词需要歌声合成模型（Sinsy、DiffSinger 这一类），不在当前纯前端的范围里。速度固定为谱面 BPM，还没有变速练习。
+- 播放没有连音线、装饰音和渐强记号；力度逐音可调，渐强靠力度自动化曲线近似。合唱采样是「啊」「哦」衬词，唱不出歌词；要真正唱词需要歌声合成模型（Sinsy、DiffSinger 这一类），不在当前纯前端的范围里。谱面中途变速已经支持，但录音对齐仍按单一速度估起点。
 - 采样音色的音域边界靠变调拼：超出采样范围最多的音会变调到 3 个半音以上，音色会有轻微共振峰偏移（尤其合唱的高音区）。要更准就往 `TIMBRES` 里加更密的 `step`，代价是包体变大。
 
 ## 测试
+
+分两层：纯 Node 的离线分析（不需要浏览器），和浏览器里的端到端。
+
+### 离线分析
+
+```bash
+node tests/smoke.mjs          # DOM-free 模块能不能在 Node 里跑起来
+node tests/rate-check.mjs     # 44.1 / 48 / 96 kHz 下音高判定是否一致
+node tests/yin-range.mjs      # YIN 在各采样率下的可达音域
+node tests/analysis.mjs       # 复刻引擎每帧的分析，对比 .f0 标注
+node tests/real-audio.mjs     # 真实录音回归
+node tests/real-eval.mjs      # 按谱面对齐的真实录音评分
+```
+
+语料目录、标注格式与已知结果见 `tests/REAL-AUDIO.md`。这些脚本直接 import `src/lib` 下的模块，跑的是产品同一套算法，不是另写一份。
+
+### 端到端
 
 需要合成音频（真实录音不好做回归）：
 

@@ -177,22 +177,6 @@ export const TRADITIONS = [
   },
 ]
 
-export const TEXTURE_LABEL = {
-  functional: '功能和声',
-  drone: '持续低音',
-  hetero: '支声',
-  parallel: '平行音程',
-  hocket: '节奏互锁',
-  overtone: '泛音',
-}
-
-export const JUDGMENT_LABEL = {
-  cents: '按音分判准',
-  band: '只看容忍带',
-  stability: '只判持续音是否稳',
-  rhythm: '只判节奏与位置',
-}
-
 export const TRADITION_MAP = Object.fromEntries(TRADITIONS.map((t) => [t.id, t]))
 
 export function traditionOf(id) {
@@ -207,11 +191,6 @@ export function traditionOf(id) {
 // 就变成侗族大歌。所以它跟着曲目走。
 //
 // 应用之所以收录这些传统，是因为收录了那些曲风——不是为了给每首歌换判定方式。
-
-/** 取某个谱面的传统 id；谱面没标就是西方四部和声 */
-export function traditionOfScore(score) {
-  return traditionOf(score && score.tradition).id
-}
 
 /**
  * 把传统落到实际生效的判定参数上。
@@ -236,10 +215,4 @@ export function settingsPatchForScore(score, settings) {
 export function judgesPitch(id) {
   const j = traditionOf(id).judgment
   return j === 'cents' || j === 'band' || j === 'stability'
-}
-
-// 引擎是否应该按音分给反馈。rhythm 类传统（kecak、因纽特）只判节奏与位置，
-// 不该拿音分去判它对错。
-export function judgesCents(id) {
-  return traditionOf(id).judgment === 'cents'
 }

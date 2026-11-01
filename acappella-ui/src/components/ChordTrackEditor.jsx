@@ -239,7 +239,7 @@ export default function ChordTrackEditor({
           className={`rounded px-2 py-1 text-[11px] ${tab === 'auto' ? 'bg-brand/15 text-foreground' : 'text-muted-foreground'}`}
           onClick={() => setTab('auto')}
         >力度自动化</button>
-        <span className="ml-1 text-[10px] text-muted-foreground">{bars} 小节 · {voicedCount} 声部</span>
+        <span className="ml-1 text-[10px] text-muted-foreground">{bars} 小节，{voicedCount} 声部</span>
         <Button size="sm" variant="outline" className="ml-auto" onClick={onClose}>完成</Button>
       </div>
 

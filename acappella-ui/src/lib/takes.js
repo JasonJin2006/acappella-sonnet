@@ -4,7 +4,7 @@
 // 自动对齐不靠听感，靠"谱面此刻该唱什么"：把录音的音高轨迹逐帧对到
 // 谱面每个候选起点上打分，分最低的就是实际起点。和冷启动定位同一套思路，
 // 但录音是离线的，可以把整条轨迹都拿来比，比实时定位稳。
-import { YinDetector, yinWindowSize } from './pitch.js'
+import { YinDetector, yinWindowSize, freqToMidi } from './pitch.js'
 import { sharedCtx } from './sharedCtx.js'
 import { openMic } from './audioInput.js'
 
@@ -237,7 +237,7 @@ export class TakeRecorder {
       }
     }
     const t = (performance.now() - this.t0) / 1000
-    const midi = r.freq > 0 ? 69 + 12 * Math.log2(r.freq / 440) : null
+    const midi = r.freq > 0 ? freqToMidi(r.freq) : null
     this.frames.push({ t, midi, c: r.clarity })
     if (this.onFrame) this.onFrame({ t, midi, clarity: r.clarity, peak, rawPeak })
   }

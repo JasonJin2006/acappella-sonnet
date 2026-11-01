@@ -401,7 +401,7 @@ export default function PianoRoll({ parts, myPart, onChange, onClose, theme }) {
           <>
             <div className="flex items-center gap-2 text-[11px]">
               <span className="font-medium">{midiToName(selNote.midi)}</span>
-              <span className="text-muted-foreground">第 {(Math.floor(selNote.start / (part?.bar || 4)) + 1)} 小节 · 时值 {selNote.beats} 拍</span>
+              <span className="text-muted-foreground">第 {(Math.floor(selNote.start / (part?.bar || 4)) + 1)} 小节，时值 {selNote.beats} 拍</span>
               <span className="ml-auto tabular text-muted-foreground">力度 {Math.round(selVel * 100)}</span>
             </div>
             <div

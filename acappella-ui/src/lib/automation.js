@@ -15,7 +15,7 @@
 //   2. 文本记谱里显式写的力度优先（用户手写的不能被曲线盖掉）
 //   3. 都没有就是默认 mf
 
-export const DEFAULT_VELOCITY = 0.58
+import { DYNAMICS } from './music.js'
 
 /**
  * 在第 bar 小节处的自动化力度。
@@ -123,22 +123,10 @@ export function setPoint(points, bar, value) {
   return list.sort((a, b) => a.bar - b.bar)
 }
 
-// 删一个控制点
-export function removePoint(points, bar) {
-  return (points || []).filter((p) => p.bar !== bar)
-}
-
-// 力度档位名（和 music.js 的 DYNAMICS 对应），给 UI 显示用
-export const VEL_MARKS = [
-  [0.16, 'ppp'],
-  [0.24, 'pp'],
-  [0.34, 'p'],
-  [0.46, 'mp'],
-  [0.58, 'mf'],
-  [0.72, 'f'],
-  [0.84, 'ff'],
-  [0.94, 'fff'],
-]
+// 力度档位名（和 music.js 的 DYNAMICS 对应），给 UI 显示用。
+// 从 DYNAMICS 派生而不是抄一份：抄的那份和 music.js 差了 0.02~0.06，
+// 同一力度在两处显示成不同标记。
+export const VEL_MARKS = Object.entries(DYNAMICS).map(([name, v]) => [v, name])
 
 export function markOf(value) {
   if (value == null) return ''

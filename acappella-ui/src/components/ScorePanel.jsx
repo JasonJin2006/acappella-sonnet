@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Upload, FileMusic, Package, FolderOpen, RefreshCw, Loader2 } from 'lucide-react'
-import { DEMOS, parseTextScore, readScoreFile, midiToName } from '@/lib/music'
+import { DEMOS, DYNAMICS, parseTextScore, readScoreFile, midiToName } from '@/lib/music'
 import { omrConvert, omrHealth, omrCheckFile } from '@/lib/omr'
 import { parsePack, isScoreFile } from '@/lib/pack'
 import {
@@ -19,7 +19,11 @@ import {
 
 // 内部谱面 → 文本记谱。力度只有非默认值才写出来，
 // 否则每个音都挂一个 mf，文本会变得很难读。
-const VEL_NAME = [[0.2, 'ppp'], [0.28, 'pp'], [0.4, 'p'], [0.51, 'mp'], [0.64, 'mf'], [0.77, 'f'], [0.88, 'ff'], [1.0, 'fff']]
+//
+// 档位表直接用 music.js 的 DYNAMICS。这里曾经另写一份
+// 0.2/0.28/0.4/0.51/0.64/0.77/0.88/1.0，两套数值对不上：0.34（p）
+// 到 0.28 和 0.4 的距离都是 0.06，取第一个就写成 pp，导出的文本是错的。
+const VEL_NAME = Object.entries(DYNAMICS).map(([name, v]) => [v, name])
 function velToMark(vel) {
   if (vel == null) return ''
   // 找最接近的力度档位；和默认 mf（0.58）差不到 0.02 就当没写
@@ -34,11 +38,26 @@ function velToMark(vel) {
 
 function scoreToText(sc) {
   const L = ['bpm ' + sc.bpm, 'bar ' + sc.bar, 'title ' + sc.title]
+  // 变速谱要写回文本，否则「导出成文本 → 再载入」会悄悄丢掉中途变速，
+  // 整首退回第一个速度。格式：tempo 拍:速度，一行一个，按拍升序。
+  if (Array.isArray(sc.tempos) && sc.tempos.length > 1) {
+    for (const t of sc.tempos) {
+      if (!(t.beat > 0)) continue     // 第 0 拍那条就是 bpm 行本身
+      L.push('tempo ' + (Math.round(t.beat * 1000) / 1000) + ':' + Math.round(t.bpm))
+    }
+  }
   for (const p of sc.parts) {
     L.push(p.id + ': ' + p.notes.map((n) => {
       const head = n.midi == null ? 'r' : midiToName(n.midi)
       const mark = velToMark(n.vel)
-      return head + ' ' + n.beats + (mark ? ' ' + mark : '')
+      // 发音法用后缀标记，文本记谱里能写回去。
+      // 保持音用 `_` 而不是 `-`：`-` 在文本记谱里是"延长上一个音"，
+      // 两者写同一个字符会让回读的时值翻倍。
+      const art = (n.accent === 1 ? '>' : n.accent >= 2 ? '^' : '') +
+                  (n.staccato ? '.' : '') + (n.tenuto ? '_' : '')
+      // 滑音：源音标 ~gl，表示滑到下一个音
+      const gl = n.gliss ? '~gl' : ''
+      return head + ' ' + n.beats + (mark ? ' ' + mark : '') + (art ? ' ' + art : '') + (gl ? ' ' + gl : '')
     }).join(' '))
   }
   return L.join('\n')
@@ -659,7 +678,7 @@ export default function ScorePanel({ score, onLoad, onImported, onImportedMany, 
               <span className="text-[11px] font-medium">{omr.label}</span>
               {omr.legacy && (
                 <span className="rounded border border-input px-1 py-0.5 text-[9px] text-muted-foreground">
-                  旧版服务 · 无进度
+                  旧版服务，无进度
                 </span>
               )}
               <button

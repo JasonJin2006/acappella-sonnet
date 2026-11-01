@@ -105,13 +105,3 @@ export async function openMic(opts = {}) {
   decision = 'fallback'
   return openStream(FALLBACK)
 }
-
-/** 当前走的是哪条口径，调试用。 */
-export function micDecision() {
-  return decision
-}
-
-/** 清掉探测缓存（设置页「重新检测麦克风」用）。 */
-export function resetMicDecision() {
-  decision = null
-}
