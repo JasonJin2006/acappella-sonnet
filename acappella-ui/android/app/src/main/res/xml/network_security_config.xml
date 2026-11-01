@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  只信任一张自签证书：服务器上 sonnet-omr 服务用的那张。
+
+  为什么需要这个文件
+  ==================
+  App 跑在 Capacitor 的 https://localhost 下，WebView 的混合内容策略会拦掉
+  http:// 请求，所以 PDF 识别服务必须走 https。服务用的是自签证书，
+  而 Android 默认不信任自己签的证书，所以在这里把它固定成信任锚，
+  随 APK 一起分发，用户不用手动装证书。
+
+  注意
+  ====
+  证书换掉（重签 / 换服务器）时，要同步替换 res/raw/sonnet_omr_ca.pem 并重新打包，
+  否则连不上。这是刻意的：证书固定就是要防中间人。
+  除下面两个回环域，其它域仍然走系统默认信任链，不受影响。
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="false">
+        <!-- 走 SSHTunnel 时的回环地址（本地调试用） -->
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+        <!-- 公网识别服务。自签证书，信任锚在 @raw/sonnet_omr_ca -->
+        <domain includeSubdomains="false">101.43.109.115</domain>
+        <trust-anchors>
+            <certificates src="@raw/sonnet_omr_ca"/>
+            <!-- 系统 CA 也保留，将来换成正式证书（Let's Encrypt）时不用改这里 -->
+            <certificates src="system"/>
+        </trust-anchors>
+    </domain-config>
+</network-security-config>

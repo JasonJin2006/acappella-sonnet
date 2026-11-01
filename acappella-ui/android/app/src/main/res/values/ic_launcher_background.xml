@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 与 capacitor.config.json 的 android.backgroundColor 以及 CSS 变量
+         background 保持一致（#09090B）。前景是青色线条，背景不能是白色，
+         否则线条和音符头的空心都会糊掉。 -->
+    <color name="ic_launcher_background">#09090B</color>
+</resources>

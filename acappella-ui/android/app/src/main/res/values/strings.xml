@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">十四行</string>
+    <string name="title_activity_main">十四行</string>
+    <string name="package_name">com.shisihang.sonnet</string>
+    <string name="custom_url_scheme">com.shisihang.sonnet</string>
+</resources>

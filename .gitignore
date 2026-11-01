@@ -1,0 +1,26 @@
+# 依赖
+node_modules/
+
+# 构建产物（vite / gradle / capacitor 同步副本，均可重新生成）
+acappella-ui/dist/
+acappella-ui/android/app/build/
+acappella-ui/android/build/
+acappella-ui/android/app/release/
+acappella-ui/android/.gradle/
+acappella-ui/android/app/src/main/assets/public/
+acappella-ui/android/local.properties
+acappella-ui/android/.idea/
+
+# Python
+__pycache__/
+*.pyc
+
+# 本机工具与调试痕迹（不随仓库走）
+.qa/
+.workbuddy/
+.zcode/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

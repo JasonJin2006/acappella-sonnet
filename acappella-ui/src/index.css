@@ -1,0 +1,136 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 240 5.9% 10%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 240 5.9% 10%;
+    --brand: 173 80% 40%;
+    --brand-foreground: 0 0% 100%;
+    --radius: 0.65rem;
+  }
+
+  .dark {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 8% 6%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 8% 7%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 5.9% 10%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 16%;
+    --input: 240 3.7% 18%;
+    --ring: 240 4.9% 70%;
+    --brand: 173 72% 46%;
+    --brand-foreground: 174 90% 8%;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground antialiased;
+    -webkit-tap-highlight-color: transparent;
+    font-feature-settings: 'tnum';
+  }
+  html, body { overscroll-behavior-y: none; }
+}
+
+/* 顶部安全距离。
+ *
+ * 为什么不能只用 env(safe-area-inset-top)：
+ *   - iOS / 刘海屏：它有值，必须用，否则内容钻到刘海下面。
+ *   - Android WebView（本 App 的主场景）：它**通常是 0**，因为状态栏由原生窗口
+ *     处理，WebView 区域已经扣掉了状态栏；此时仅靠 env() 会让 header 紧贴
+ *     状态栏（实测状态栏 130px，标题几乎压上去）。
+ *
+ * 所以取 max(1rem, env(...))：Android 上得到 16px 的呼吸感，iOS 上有刘海时
+ * 自动用更大的安全区值。1rem 是"最小呼吸量"，不是精确的状态栏高度 ——
+ * 精确值交给 env()。 */
+.pt-safe {
+  padding-top: max(1rem, env(safe-area-inset-top, 0px));
+}
+
+/* 底部同理：给手势条/虚拟导航栏留位置 */
+.pb-safe {
+  padding-bottom: max(0px, env(safe-area-inset-bottom, 0px));
+}
+
+/* 横向滚动的工具栏。
+ *
+ * 坑：在 overflow-x-auto 的容器上写 px-3，**右侧内边距会被滚动裁掉**，
+ * 最后一个按钮贴着右边缘被切半截（实测练唱页的「定音」）。
+ * 标准解法是用伪元素在末尾撑出一段空白 —— padding 做不到这件事，
+ * 因为 padding 属于滚动内容的一部分，滚到头时右侧仍然贴边。
+ *
+ * 另外 flex 子项默认会收缩，按钮文字会被挤成两行，所以统一兜底 shrink-0。 */
+.scroll-x-pad {
+  padding-left: 1rem;
+  padding-right: 0;
+  scroll-padding-inline: 1rem;
+}
+.scroll-x-pad > * {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.scroll-x-pad::after {
+  content: '';
+  flex: 0 0 1rem;
+}
+
+/* 音准指针：跟随实时值移动，不用 React 重渲染 */
+.needle {
+  transition: transform 60ms linear, background-color 140ms ease;
+  will-change: transform;
+}
+
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* 乐谱墨色：OSMD 的元素默认走 CSS 继承（深色下会继承成灰、甚至黑到看不见），
+   这里按主题强制指定，保证音符/谱线在两种主题下都清晰 */
+:root { --score-ink: #18181b; }
+.dark { --score-ink: #f4f4f5; }
+
+[data-score] svg path,
+[data-score] svg rect,
+[data-score] svg line,
+[data-score] svg polygon,
+[data-score] svg polyline,
+[data-score] svg circle,
+[data-score] svg ellipse {
+  fill: var(--score-ink);
+  stroke: var(--score-ink);
+}
+[data-score] svg text,
+[data-score] svg tspan {
+  fill: var(--score-ink);
+  stroke: none;
+}
+[data-score] svg img { mix-blend-mode: normal; }

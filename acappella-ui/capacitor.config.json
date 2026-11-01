@@ -1,0 +1,7 @@
+{
+  "appId": "com.shisihang.sonnet",
+  "appName": "十四行",
+  "webDir": "dist",
+  "server": { "androidScheme": "https" },
+  "android": { "backgroundColor": "#09090b" }
+}

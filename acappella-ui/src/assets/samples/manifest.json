@@ -1,0 +1,1766 @@
+{
+ "celesta": {
+  "gain": 1.1,
+  "name": "钢片琴",
+  "samples": [
+   {
+    "file": "60.ogg",
+    "frames": 19580,
+    "midi": 60,
+    "rate": 44100,
+    "seconds": 0.444
+   },
+   {
+    "file": "66.ogg",
+    "frames": 25024,
+    "midi": 66,
+    "rate": 44100,
+    "seconds": 0.567
+   },
+   {
+    "file": "72.ogg",
+    "frames": 23376,
+    "midi": 72,
+    "rate": 44100,
+    "seconds": 0.53
+   },
+   {
+    "file": "78.ogg",
+    "frames": 21924,
+    "midi": 78,
+    "rate": 44100,
+    "seconds": 0.497
+   },
+   {
+    "file": "84.ogg",
+    "frames": 20160,
+    "midi": 84,
+    "rate": 44100,
+    "seconds": 0.457
+   }
+  ],
+  "sustain": 0.0
+ },
+ "cello": {
+  "gain": 1.0,
+  "name": "大提琴",
+  "samples": [
+   {
+    "file": "49.ogg",
+    "frames": 45496,
+    "midi": 49,
+    "rate": 44100,
+    "seconds": 1.032
+   },
+   {
+    "file": "52.ogg",
+    "frames": 46036,
+    "midi": 52,
+    "rate": 44100,
+    "seconds": 1.044
+   },
+   {
+    "file": "55.ogg",
+    "frames": 75052,
+    "midi": 55,
+    "rate": 44100,
+    "seconds": 1.702
+   },
+   {
+    "file": "58.ogg",
+    "frames": 62488,
+    "midi": 58,
+    "rate": 44100,
+    "seconds": 1.417
+   },
+   {
+    "file": "61.ogg",
+    "frames": 78702,
+    "midi": 61,
+    "rate": 44100,
+    "seconds": 1.785
+   },
+   {
+    "file": "64.ogg",
+    "frames": 85004,
+    "midi": 64,
+    "rate": 44100,
+    "seconds": 1.928
+   },
+   {
+    "file": "67.ogg",
+    "frames": 66657,
+    "midi": 67,
+    "rate": 44100,
+    "seconds": 1.511
+   },
+   {
+    "file": "70.ogg",
+    "frames": 52010,
+    "midi": 70,
+    "rate": 44100,
+    "seconds": 1.179
+   },
+   {
+    "file": "73.ogg",
+    "frames": 50520,
+    "midi": 73,
+    "rate": 44100,
+    "seconds": 1.146
+   },
+   {
+    "file": "76.ogg",
+    "frames": 61370,
+    "midi": 76,
+    "rate": 44100,
+    "seconds": 1.392
+   }
+  ],
+  "sustain": 0.45
+ },
+ "choir": {
+  "gain": 1.0,
+  "name": "合唱 啊",
+  "samples": [
+   {
+    "file": "54.ogg",
+    "frames": 97116,
+    "midi": 54,
+    "rate": 32000,
+    "seconds": 3.035
+   },
+   {
+    "file": "57.ogg",
+    "frames": 83490,
+    "midi": 57,
+    "rate": 32000,
+    "seconds": 2.609
+   },
+   {
+    "file": "60.ogg",
+    "frames": 81860,
+    "midi": 60,
+    "rate": 32000,
+    "seconds": 2.558
+   },
+   {
+    "file": "63.ogg",
+    "frames": 78740,
+    "midi": 63,
+    "rate": 32000,
+    "seconds": 2.461
+   },
+   {
+    "file": "66.ogg",
+    "frames": 88034,
+    "midi": 66,
+    "rate": 32000,
+    "seconds": 2.751
+   },
+   {
+    "file": "69.ogg",
+    "frames": 77592,
+    "midi": 69,
+    "rate": 32000,
+    "seconds": 2.425
+   },
+   {
+    "file": "72.ogg",
+    "frames": 53144,
+    "midi": 72,
+    "rate": 32000,
+    "seconds": 1.661
+   },
+   {
+    "file": "75.ogg",
+    "frames": 73406,
+    "midi": 75,
+    "rate": 32000,
+    "seconds": 2.294
+   },
+   {
+    "file": "78.ogg",
+    "frames": 55216,
+    "midi": 78,
+    "rate": 32000,
+    "seconds": 1.726
+   },
+   {
+    "file": "81.ogg",
+    "frames": 74276,
+    "midi": 81,
+    "rate": 32000,
+    "seconds": 2.321
+   }
+  ],
+  "sustain": 0.55
+ },
+ "clarinet": {
+  "gain": 1.0,
+  "name": "单簧管",
+  "samples": [
+   {
+    "file": "52.ogg",
+    "frames": 27264,
+    "midi": 52,
+    "rate": 44100,
+    "seconds": 0.618
+   },
+   {
+    "file": "56.ogg",
+    "frames": 32600,
+    "midi": 56,
+    "rate": 44100,
+    "seconds": 0.739
+   },
+   {
+    "file": "59.ogg",
+    "frames": 17600,
+    "midi": 59,
+    "rate": 44100,
+    "seconds": 0.399
+   },
+   {
+    "file": "61.ogg",
+    "frames": 14436,
+    "midi": 61,
+    "rate": 44100,
+    "seconds": 0.327
+   },
+   {
+    "file": "65.ogg",
+    "frames": 7300,
+    "midi": 65,
+    "rate": 44100,
+    "seconds": 0.166
+   },
+   {
+    "file": "68.ogg",
+    "frames": 10130,
+    "midi": 68,
+    "rate": 44100,
+    "seconds": 0.23
+   },
+   {
+    "file": "72.ogg",
+    "frames": 9088,
+    "midi": 72,
+    "rate": 44100,
+    "seconds": 0.206
+   },
+   {
+    "file": "74.ogg",
+    "frames": 6272,
+    "midi": 74,
+    "rate": 44100,
+    "seconds": 0.142
+   },
+   {
+    "file": "76.ogg",
+    "frames": 5536,
+    "midi": 76,
+    "rate": 44100,
+    "seconds": 0.126
+   }
+  ],
+  "sustain": 0.4
+ },
+ "contrabass": {
+  "gain": 1.05,
+  "name": "低音提琴",
+  "samples": [
+   {
+    "file": "28.ogg",
+    "frames": 126816,
+    "midi": 28,
+    "rate": 22050,
+    "seconds": 5.751
+   },
+   {
+    "file": "32.ogg",
+    "frames": 44332,
+    "midi": 32,
+    "rate": 44100,
+    "seconds": 1.005
+   },
+   {
+    "file": "35.ogg",
+    "frames": 47140,
+    "midi": 35,
+    "rate": 44100,
+    "seconds": 1.069
+   },
+   {
+    "file": "38.ogg",
+    "frames": 49164,
+    "midi": 38,
+    "rate": 44100,
+    "seconds": 1.115
+   },
+   {
+    "file": "41.ogg",
+    "frames": 42596,
+    "midi": 41,
+    "rate": 44100,
+    "seconds": 0.966
+   },
+   {
+    "file": "44.ogg",
+    "frames": 53511,
+    "midi": 44,
+    "rate": 44100,
+    "seconds": 1.213
+   },
+   {
+    "file": "47.ogg",
+    "frames": 43852,
+    "midi": 47,
+    "rate": 44100,
+    "seconds": 0.994
+   },
+   {
+    "file": "50.ogg",
+    "frames": 38044,
+    "midi": 50,
+    "rate": 44100,
+    "seconds": 0.863
+   }
+  ],
+  "sustain": 0.35
+ },
+ "flute": {
+  "gain": 1.0,
+  "name": "长笛",
+  "samples": [
+   {
+    "file": "61.ogg",
+    "frames": 40224,
+    "midi": 61,
+    "rate": 44100,
+    "seconds": 0.912
+   },
+   {
+    "file": "64.ogg",
+    "frames": 43032,
+    "midi": 64,
+    "rate": 44100,
+    "seconds": 0.976
+   },
+   {
+    "file": "67.ogg",
+    "frames": 38448,
+    "midi": 67,
+    "rate": 44100,
+    "seconds": 0.872
+   },
+   {
+    "file": "71.ogg",
+    "frames": 27148,
+    "midi": 71,
+    "rate": 44100,
+    "seconds": 0.616
+   },
+   {
+    "file": "74.ogg",
+    "frames": 55360,
+    "midi": 74,
+    "rate": 44100,
+    "seconds": 1.255
+   },
+   {
+    "file": "78.ogg",
+    "frames": 29955,
+    "midi": 78,
+    "rate": 44100,
+    "seconds": 0.679
+   },
+   {
+    "file": "80.ogg",
+    "frames": 22024,
+    "midi": 80,
+    "rate": 44100,
+    "seconds": 0.499
+   },
+   {
+    "file": "84.ogg",
+    "frames": 32544,
+    "midi": 84,
+    "rate": 44100,
+    "seconds": 0.738
+   }
+  ],
+  "sustain": 0.45
+ },
+ "frenchHorn": {
+  "gain": 1.0,
+  "name": "圆号",
+  "samples": [
+   {
+    "file": "45.ogg",
+    "frames": 95899,
+    "midi": 45,
+    "rate": 32000,
+    "seconds": 2.997
+   },
+   {
+    "file": "51.ogg",
+    "frames": 135219,
+    "midi": 51,
+    "rate": 32000,
+    "seconds": 4.226
+   },
+   {
+    "file": "57.ogg",
+    "frames": 79747,
+    "midi": 57,
+    "rate": 32000,
+    "seconds": 2.492
+   },
+   {
+    "file": "63.ogg",
+    "frames": 160886,
+    "midi": 63,
+    "rate": 32000,
+    "seconds": 5.028
+   },
+   {
+    "file": "69.ogg",
+    "frames": 84225,
+    "midi": 69,
+    "rate": 32000,
+    "seconds": 2.632
+   },
+   {
+    "file": "75.ogg",
+    "frames": 99205,
+    "midi": 75,
+    "rate": 32000,
+    "seconds": 3.1
+   }
+  ],
+  "sustain": 0.4
+ },
+ "glockenspiel": {
+  "gain": 1.05,
+  "name": "钟琴",
+  "samples": [
+   {
+    "file": "79.ogg",
+    "frames": 36008,
+    "midi": 79,
+    "rate": 44100,
+    "seconds": 0.817
+   },
+   {
+    "file": "84.ogg",
+    "frames": 36008,
+    "midi": 84,
+    "rate": 44100,
+    "seconds": 0.817
+   },
+   {
+    "file": "87.ogg",
+    "frames": 36012,
+    "midi": 87,
+    "rate": 44100,
+    "seconds": 0.817
+   },
+   {
+    "file": "90.ogg",
+    "frames": 9920,
+    "midi": 90,
+    "rate": 44100,
+    "seconds": 0.225
+   },
+   {
+    "file": "96.ogg",
+    "frames": 36004,
+    "midi": 96,
+    "rate": 44100,
+    "seconds": 0.816
+   },
+   {
+    "file": "99.ogg",
+    "frames": 36012,
+    "midi": 99,
+    "rate": 44100,
+    "seconds": 0.817
+   },
+   {
+    "file": "103.ogg",
+    "frames": 36006,
+    "midi": 103,
+    "rate": 44100,
+    "seconds": 0.816
+   }
+  ],
+  "sustain": 0.0
+ },
+ "harp": {
+  "gain": 1.1,
+  "name": "竖琴",
+  "samples": [
+   {
+    "file": "44.ogg",
+    "frames": 48176,
+    "midi": 44,
+    "rate": 44100,
+    "seconds": 1.092
+   },
+   {
+    "file": "49.ogg",
+    "frames": 44510,
+    "midi": 49,
+    "rate": 44100,
+    "seconds": 1.009
+   },
+   {
+    "file": "54.ogg",
+    "frames": 52384,
+    "midi": 54,
+    "rate": 44100,
+    "seconds": 1.188
+   },
+   {
+    "file": "56.ogg",
+    "frames": 45696,
+    "midi": 56,
+    "rate": 44100,
+    "seconds": 1.036
+   },
+   {
+    "file": "61.ogg",
+    "frames": 31016,
+    "midi": 61,
+    "rate": 44100,
+    "seconds": 0.703
+   },
+   {
+    "file": "63.ogg",
+    "frames": 18996,
+    "midi": 63,
+    "rate": 44100,
+    "seconds": 0.431
+   },
+   {
+    "file": "68.ogg",
+    "frames": 23308,
+    "midi": 68,
+    "rate": 44100,
+    "seconds": 0.529
+   },
+   {
+    "file": "70.ogg",
+    "frames": 25888,
+    "midi": 70,
+    "rate": 44100,
+    "seconds": 0.587
+   },
+   {
+    "file": "73.ogg",
+    "frames": 23264,
+    "midi": 73,
+    "rate": 44100,
+    "seconds": 0.528
+   },
+   {
+    "file": "78.ogg",
+    "frames": 19124,
+    "midi": 78,
+    "rate": 44100,
+    "seconds": 0.434
+   },
+   {
+    "file": "83.ogg",
+    "frames": 14648,
+    "midi": 83,
+    "rate": 44100,
+    "seconds": 0.332
+   }
+  ],
+  "sustain": 0.0
+ },
+ "harpsichord": {
+  "gain": 1.1,
+  "name": "大键琴",
+  "samples": [
+   {
+    "file": "48.ogg",
+    "frames": 102512,
+    "midi": 48,
+    "rate": 44100,
+    "seconds": 2.325
+   },
+   {
+    "file": "53.ogg",
+    "frames": 47464,
+    "midi": 53,
+    "rate": 44100,
+    "seconds": 1.076
+   },
+   {
+    "file": "60.ogg",
+    "frames": 93251,
+    "midi": 60,
+    "rate": 44100,
+    "seconds": 2.115
+   },
+   {
+    "file": "65.ogg",
+    "frames": 37256,
+    "midi": 65,
+    "rate": 44100,
+    "seconds": 0.845
+   },
+   {
+    "file": "71.ogg",
+    "frames": 39096,
+    "midi": 71,
+    "rate": 44100,
+    "seconds": 0.887
+   },
+   {
+    "file": "77.ogg",
+    "frames": 31907,
+    "midi": 77,
+    "rate": 44100,
+    "seconds": 0.724
+   }
+  ],
+  "sustain": 0.0
+ },
+ "kalimba": {
+  "gain": 1.1,
+  "name": "卡林巴",
+  "samples": [
+   {
+    "file": "65.ogg",
+    "frames": 15004,
+    "midi": 65,
+    "rate": 44100,
+    "seconds": 0.34
+   },
+   {
+    "file": "69.ogg",
+    "frames": 15003,
+    "midi": 69,
+    "rate": 44100,
+    "seconds": 0.34
+   },
+   {
+    "file": "72.ogg",
+    "frames": 14668,
+    "midi": 72,
+    "rate": 34000,
+    "seconds": 0.431
+   },
+   {
+    "file": "77.ogg",
+    "frames": 15003,
+    "midi": 77,
+    "rate": 44100,
+    "seconds": 0.34
+   },
+   {
+    "file": "84.ogg",
+    "frames": 15003,
+    "midi": 84,
+    "rate": 44100,
+    "seconds": 0.34
+   }
+  ],
+  "sustain": 0.0
+ },
+ "marimba": {
+  "gain": 1.1,
+  "name": "木琴",
+  "samples": [
+   {
+    "file": "48.ogg",
+    "frames": 95232,
+    "midi": 48,
+    "rate": 44100,
+    "seconds": 2.159
+   },
+   {
+    "file": "54.ogg",
+    "frames": 43808,
+    "midi": 54,
+    "rate": 44100,
+    "seconds": 0.993
+   },
+   {
+    "file": "60.ogg",
+    "frames": 68648,
+    "midi": 60,
+    "rate": 44100,
+    "seconds": 1.557
+   },
+   {
+    "file": "66.ogg",
+    "frames": 61932,
+    "midi": 66,
+    "rate": 44100,
+    "seconds": 1.404
+   },
+   {
+    "file": "72.ogg",
+    "frames": 52374,
+    "midi": 72,
+    "rate": 44100,
+    "seconds": 1.188
+   },
+   {
+    "file": "78.ogg",
+    "frames": 45774,
+    "midi": 78,
+    "rate": 44100,
+    "seconds": 1.038
+   },
+   {
+    "file": "84.ogg",
+    "frames": 43096,
+    "midi": 84,
+    "rate": 44100,
+    "seconds": 0.977
+   }
+  ],
+  "sustain": 0.0
+ },
+ "oboe": {
+  "gain": 1.0,
+  "name": "双簧管",
+  "samples": [
+   {
+    "file": "63.ogg",
+    "frames": 38416,
+    "midi": 63,
+    "rate": 44100,
+    "seconds": 0.871
+   },
+   {
+    "file": "67.ogg",
+    "frames": 28680,
+    "midi": 67,
+    "rate": 44100,
+    "seconds": 0.65
+   },
+   {
+    "file": "70.ogg",
+    "frames": 38916,
+    "midi": 70,
+    "rate": 44100,
+    "seconds": 0.882
+   },
+   {
+    "file": "74.ogg",
+    "frames": 26892,
+    "midi": 74,
+    "rate": 44100,
+    "seconds": 0.61
+   },
+   {
+    "file": "79.ogg",
+    "frames": 28184,
+    "midi": 79,
+    "rate": 44100,
+    "seconds": 0.639
+   },
+   {
+    "file": "82.ogg",
+    "frames": 28960,
+    "midi": 82,
+    "rate": 44100,
+    "seconds": 0.657
+   }
+  ],
+  "sustain": 0.4
+ },
+ "organ": {
+  "gain": 1.05,
+  "name": "管风琴",
+  "samples": [
+   {
+    "file": "45.ogg",
+    "frames": 92232,
+    "midi": 45,
+    "rate": 22050,
+    "seconds": 4.183
+   },
+   {
+    "file": "48.ogg",
+    "frames": 110032,
+    "midi": 48,
+    "rate": 22050,
+    "seconds": 4.99
+   },
+   {
+    "file": "51.ogg",
+    "frames": 97904,
+    "midi": 51,
+    "rate": 22050,
+    "seconds": 4.44
+   },
+   {
+    "file": "54.ogg",
+    "frames": 93576,
+    "midi": 54,
+    "rate": 22050,
+    "seconds": 4.244
+   },
+   {
+    "file": "57.ogg",
+    "frames": 91880,
+    "midi": 57,
+    "rate": 22050,
+    "seconds": 4.167
+   },
+   {
+    "file": "60.ogg",
+    "frames": 90392,
+    "midi": 60,
+    "rate": 22050,
+    "seconds": 4.099
+   },
+   {
+    "file": "63.ogg",
+    "frames": 69152,
+    "midi": 63,
+    "rate": 22050,
+    "seconds": 3.136
+   },
+   {
+    "file": "66.ogg",
+    "frames": 55359,
+    "midi": 66,
+    "rate": 22050,
+    "seconds": 2.511
+   },
+   {
+    "file": "69.ogg",
+    "frames": 78816,
+    "midi": 69,
+    "rate": 22050,
+    "seconds": 3.574
+   },
+   {
+    "file": "72.ogg",
+    "frames": 57991,
+    "midi": 72,
+    "rate": 22050,
+    "seconds": 2.63
+   },
+   {
+    "file": "75.ogg",
+    "frames": 62432,
+    "midi": 75,
+    "rate": 22050,
+    "seconds": 2.831
+   },
+   {
+    "file": "78.ogg",
+    "frames": 61648,
+    "midi": 78,
+    "rate": 22050,
+    "seconds": 2.796
+   },
+   {
+    "file": "81.ogg",
+    "frames": 63168,
+    "midi": 81,
+    "rate": 22050,
+    "seconds": 2.865
+   },
+   {
+    "file": "84.ogg",
+    "frames": 54976,
+    "midi": 84,
+    "rate": 22050,
+    "seconds": 2.493
+   }
+  ],
+  "sustain": 0.7
+ },
+ "piano": {
+  "gain": 1.15,
+  "name": "钢琴",
+  "samples": [
+   {
+    "file": "27.ogg",
+    "frames": 540207,
+    "midi": 27,
+    "rate": 44100,
+    "seconds": 12.25
+   },
+   {
+    "file": "29.ogg",
+    "frames": 611435,
+    "midi": 29,
+    "rate": 44100,
+    "seconds": 13.865
+   },
+   {
+    "file": "31.ogg",
+    "frames": 538632,
+    "midi": 31,
+    "rate": 44100,
+    "seconds": 12.214
+   },
+   {
+    "file": "33.ogg",
+    "frames": 632869,
+    "midi": 33,
+    "rate": 44100,
+    "seconds": 14.351
+   },
+   {
+    "file": "35.ogg",
+    "frames": 592408,
+    "midi": 35,
+    "rate": 44100,
+    "seconds": 13.433
+   },
+   {
+    "file": "38.ogg",
+    "frames": 557145,
+    "midi": 38,
+    "rate": 44100,
+    "seconds": 12.634
+   },
+   {
+    "file": "40.ogg",
+    "frames": 412624,
+    "midi": 40,
+    "rate": 44100,
+    "seconds": 9.357
+   },
+   {
+    "file": "43.ogg",
+    "frames": 580617,
+    "midi": 43,
+    "rate": 44100,
+    "seconds": 13.166
+   },
+   {
+    "file": "45.ogg",
+    "frames": 464292,
+    "midi": 45,
+    "rate": 44100,
+    "seconds": 10.528
+   },
+   {
+    "file": "47.ogg",
+    "frames": 478118,
+    "midi": 47,
+    "rate": 44100,
+    "seconds": 10.842
+   },
+   {
+    "file": "50.ogg",
+    "frames": 450899,
+    "midi": 50,
+    "rate": 44100,
+    "seconds": 10.224
+   },
+   {
+    "file": "52.ogg",
+    "frames": 270800,
+    "midi": 52,
+    "rate": 44100,
+    "seconds": 6.141
+   },
+   {
+    "file": "55.ogg",
+    "frames": 475992,
+    "midi": 55,
+    "rate": 44100,
+    "seconds": 10.793
+   },
+   {
+    "file": "57.ogg",
+    "frames": 459024,
+    "midi": 57,
+    "rate": 44100,
+    "seconds": 10.409
+   },
+   {
+    "file": "59.ogg",
+    "frames": 355797,
+    "midi": 59,
+    "rate": 44100,
+    "seconds": 8.068
+   },
+   {
+    "file": "62.ogg",
+    "frames": 370640,
+    "midi": 62,
+    "rate": 44100,
+    "seconds": 8.405
+   },
+   {
+    "file": "64.ogg",
+    "frames": 372115,
+    "midi": 64,
+    "rate": 44100,
+    "seconds": 8.438
+   },
+   {
+    "file": "67.ogg",
+    "frames": 204240,
+    "midi": 67,
+    "rate": 44100,
+    "seconds": 4.631
+   },
+   {
+    "file": "69.ogg",
+    "frames": 211920,
+    "midi": 69,
+    "rate": 44100,
+    "seconds": 4.805
+   },
+   {
+    "file": "71.ogg",
+    "frames": 242733,
+    "midi": 71,
+    "rate": 44100,
+    "seconds": 5.504
+   },
+   {
+    "file": "76.ogg",
+    "frames": 123344,
+    "midi": 76,
+    "rate": 44100,
+    "seconds": 2.797
+   },
+   {
+    "file": "79.ogg",
+    "frames": 79312,
+    "midi": 79,
+    "rate": 44100,
+    "seconds": 1.798
+   },
+   {
+    "file": "83.ogg",
+    "frames": 199857,
+    "midi": 83,
+    "rate": 44100,
+    "seconds": 4.532
+   },
+   {
+    "file": "85.ogg",
+    "frames": 128464,
+    "midi": 85,
+    "rate": 44100,
+    "seconds": 2.913
+   },
+   {
+    "file": "87.ogg",
+    "frames": 90064,
+    "midi": 87,
+    "rate": 44100,
+    "seconds": 2.042
+   },
+   {
+    "file": "89.ogg",
+    "frames": 96720,
+    "midi": 89,
+    "rate": 44100,
+    "seconds": 2.193
+   },
+   {
+    "file": "91.ogg",
+    "frames": 73680,
+    "midi": 91,
+    "rate": 44100,
+    "seconds": 1.671
+   },
+   {
+    "file": "93.ogg",
+    "frames": 73168,
+    "midi": 93,
+    "rate": 44100,
+    "seconds": 1.659
+   }
+  ],
+  "sustain": 0.0
+ },
+ "recorder": {
+  "gain": 1.0,
+  "name": "竖笛",
+  "samples": [
+   {
+    "file": "72.ogg",
+    "frames": 24928,
+    "midi": 72,
+    "rate": 44100,
+    "seconds": 0.565
+   },
+   {
+    "file": "74.ogg",
+    "frames": 55360,
+    "midi": 74,
+    "rate": 44100,
+    "seconds": 1.255
+   },
+   {
+    "file": "76.ogg",
+    "frames": 57277,
+    "midi": 76,
+    "rate": 44100,
+    "seconds": 1.299
+   },
+   {
+    "file": "78.ogg",
+    "frames": 29955,
+    "midi": 78,
+    "rate": 44100,
+    "seconds": 0.679
+   },
+   {
+    "file": "80.ogg",
+    "frames": 22024,
+    "midi": 80,
+    "rate": 44100,
+    "seconds": 0.499
+   },
+   {
+    "file": "83.ogg",
+    "frames": 36304,
+    "midi": 83,
+    "rate": 44100,
+    "seconds": 0.823
+   },
+   {
+    "file": "86.ogg",
+    "frames": 28182,
+    "midi": 86,
+    "rate": 44100,
+    "seconds": 0.639
+   },
+   {
+    "file": "90.ogg",
+    "frames": 29956,
+    "midi": 90,
+    "rate": 44100,
+    "seconds": 0.679
+   }
+  ],
+  "sustain": 0.35
+ },
+ "rockOrgan": {
+  "gain": 1.0,
+  "name": "摇滚风琴",
+  "samples": [
+   {
+    "file": "57.ogg",
+    "frames": 83064,
+    "midi": 57,
+    "rate": 32000,
+    "seconds": 2.596
+   },
+   {
+    "file": "60.ogg",
+    "frames": 119564,
+    "midi": 60,
+    "rate": 32000,
+    "seconds": 3.736
+   },
+   {
+    "file": "63.ogg",
+    "frames": 91634,
+    "midi": 63,
+    "rate": 32000,
+    "seconds": 2.864
+   },
+   {
+    "file": "69.ogg",
+    "frames": 66500,
+    "midi": 69,
+    "rate": 32000,
+    "seconds": 2.078
+   },
+   {
+    "file": "73.ogg",
+    "frames": 94504,
+    "midi": 73,
+    "rate": 32000,
+    "seconds": 2.953
+   },
+   {
+    "file": "79.ogg",
+    "frames": 77100,
+    "midi": 79,
+    "rate": 32000,
+    "seconds": 2.409
+   },
+   {
+    "file": "83.ogg",
+    "frames": 62980,
+    "midi": 83,
+    "rate": 32000,
+    "seconds": 1.968
+   },
+   {
+    "file": "89.ogg",
+    "frames": 61160,
+    "midi": 89,
+    "rate": 32000,
+    "seconds": 1.911
+   },
+   {
+    "file": "91.ogg",
+    "frames": 60932,
+    "midi": 91,
+    "rate": 32000,
+    "seconds": 1.904
+   }
+  ],
+  "sustain": 0.6
+ },
+ "soloVoice": {
+  "gain": 1.0,
+  "name": "独唱 啊",
+  "samples": [
+   {
+    "file": "48.ogg",
+    "frames": 164154,
+    "midi": 48,
+    "rate": 44100,
+    "seconds": 3.722
+   },
+   {
+    "file": "60.ogg",
+    "frames": 86935,
+    "midi": 60,
+    "rate": 44100,
+    "seconds": 1.971
+   },
+   {
+    "file": "72.ogg",
+    "frames": 57620,
+    "midi": 72,
+    "rate": 44100,
+    "seconds": 1.307
+   },
+   {
+    "file": "84.ogg",
+    "frames": 28874,
+    "midi": 84,
+    "rate": 44100,
+    "seconds": 0.655
+   }
+  ],
+  "sustain": 0.4
+ },
+ "strings": {
+  "gain": 1.0,
+  "name": "弦乐合奏",
+  "samples": [
+   {
+    "file": "49.ogg",
+    "frames": 45496,
+    "midi": 49,
+    "rate": 44100,
+    "seconds": 1.032
+   },
+   {
+    "file": "52.ogg",
+    "frames": 46036,
+    "midi": 52,
+    "rate": 44100,
+    "seconds": 1.044
+   },
+   {
+    "file": "55.ogg",
+    "frames": 75052,
+    "midi": 55,
+    "rate": 44100,
+    "seconds": 1.702
+   },
+   {
+    "file": "58.ogg",
+    "frames": 62488,
+    "midi": 58,
+    "rate": 44100,
+    "seconds": 1.417
+   },
+   {
+    "file": "61.ogg",
+    "frames": 78702,
+    "midi": 61,
+    "rate": 44100,
+    "seconds": 1.785
+   },
+   {
+    "file": "64.ogg",
+    "frames": 85004,
+    "midi": 64,
+    "rate": 44100,
+    "seconds": 1.928
+   },
+   {
+    "file": "67.ogg",
+    "frames": 66657,
+    "midi": 67,
+    "rate": 44100,
+    "seconds": 1.511
+   },
+   {
+    "file": "70.ogg",
+    "frames": 52010,
+    "midi": 70,
+    "rate": 44100,
+    "seconds": 1.179
+   },
+   {
+    "file": "73.ogg",
+    "frames": 50520,
+    "midi": 73,
+    "rate": 44100,
+    "seconds": 1.146
+   },
+   {
+    "file": "76.ogg",
+    "frames": 61370,
+    "midi": 76,
+    "rate": 44100,
+    "seconds": 1.392
+   },
+   {
+    "file": "79.ogg",
+    "frames": 57742,
+    "midi": 79,
+    "rate": 44100,
+    "seconds": 1.309
+   },
+   {
+    "file": "82.ogg",
+    "frames": 73833,
+    "midi": 82,
+    "rate": 44100,
+    "seconds": 1.674
+   },
+   {
+    "file": "83.ogg",
+    "frames": 66455,
+    "midi": 83,
+    "rate": 44100,
+    "seconds": 1.507
+   }
+  ],
+  "sustain": 0.5
+ },
+ "trombone": {
+  "gain": 0.95,
+  "name": "长号",
+  "samples": [
+   {
+    "file": "46.ogg",
+    "frames": 20426,
+    "midi": 46,
+    "rate": 44100,
+    "seconds": 0.463
+   },
+   {
+    "file": "48.ogg",
+    "frames": 21342,
+    "midi": 48,
+    "rate": 44100,
+    "seconds": 0.484
+   },
+   {
+    "file": "51.ogg",
+    "frames": 11662,
+    "midi": 51,
+    "rate": 44100,
+    "seconds": 0.264
+   },
+   {
+    "file": "53.ogg",
+    "frames": 23564,
+    "midi": 53,
+    "rate": 44100,
+    "seconds": 0.534
+   },
+   {
+    "file": "58.ogg",
+    "frames": 20394,
+    "midi": 58,
+    "rate": 44100,
+    "seconds": 0.462
+   },
+   {
+    "file": "60.ogg",
+    "frames": 16444,
+    "midi": 60,
+    "rate": 44100,
+    "seconds": 0.373
+   },
+   {
+    "file": "63.ogg",
+    "frames": 22148,
+    "midi": 63,
+    "rate": 44100,
+    "seconds": 0.502
+   },
+   {
+    "file": "65.ogg",
+    "frames": 12666,
+    "midi": 65,
+    "rate": 44100,
+    "seconds": 0.287
+   },
+   {
+    "file": "67.ogg",
+    "frames": 18524,
+    "midi": 67,
+    "rate": 44100,
+    "seconds": 0.42
+   },
+   {
+    "file": "70.ogg",
+    "frames": 9229,
+    "midi": 70,
+    "rate": 44100,
+    "seconds": 0.209
+   },
+   {
+    "file": "72.ogg",
+    "frames": 9258,
+    "midi": 72,
+    "rate": 44100,
+    "seconds": 0.21
+   },
+   {
+    "file": "75.ogg",
+    "frames": 9775,
+    "midi": 75,
+    "rate": 44100,
+    "seconds": 0.222
+   }
+  ],
+  "sustain": 0.4
+ },
+ "trumpet": {
+  "gain": 0.95,
+  "name": "小号",
+  "samples": [
+   {
+    "file": "64.ogg",
+    "frames": 18354,
+    "midi": 64,
+    "rate": 44100,
+    "seconds": 0.416
+   },
+   {
+    "file": "67.ogg",
+    "frames": 16822,
+    "midi": 67,
+    "rate": 44100,
+    "seconds": 0.381
+   },
+   {
+    "file": "72.ogg",
+    "frames": 23224,
+    "midi": 72,
+    "rate": 44100,
+    "seconds": 0.527
+   },
+   {
+    "file": "79.ogg",
+    "frames": 19888,
+    "midi": 79,
+    "rate": 44100,
+    "seconds": 0.451
+   }
+  ],
+  "sustain": 0.4
+ },
+ "tuba": {
+  "gain": 1.0,
+  "name": "大号",
+  "samples": [
+   {
+    "file": "34.ogg",
+    "frames": 10006,
+    "midi": 34,
+    "rate": 44100,
+    "seconds": 0.227
+   },
+   {
+    "file": "39.ogg",
+    "frames": 9004,
+    "midi": 39,
+    "rate": 44100,
+    "seconds": 0.204
+   },
+   {
+    "file": "44.ogg",
+    "frames": 6006,
+    "midi": 44,
+    "rate": 44100,
+    "seconds": 0.136
+   },
+   {
+    "file": "54.ogg",
+    "frames": 6016,
+    "midi": 54,
+    "rate": 44100,
+    "seconds": 0.136
+   },
+   {
+    "file": "59.ogg",
+    "frames": 7002,
+    "midi": 59,
+    "rate": 44100,
+    "seconds": 0.159
+   }
+  ],
+  "sustain": 0.4
+ },
+ "vibraphone": {
+  "gain": 1.1,
+  "name": "颤音琴",
+  "samples": [
+   {
+    "file": "57.ogg",
+    "frames": 17728,
+    "midi": 57,
+    "rate": 44100,
+    "seconds": 0.402
+   },
+   {
+    "file": "60.ogg",
+    "frames": 68648,
+    "midi": 60,
+    "rate": 44100,
+    "seconds": 1.557
+   },
+   {
+    "file": "63.ogg",
+    "frames": 9430,
+    "midi": 63,
+    "rate": 44100,
+    "seconds": 0.214
+   },
+   {
+    "file": "66.ogg",
+    "frames": 61932,
+    "midi": 66,
+    "rate": 44100,
+    "seconds": 1.404
+   },
+   {
+    "file": "71.ogg",
+    "frames": 7036,
+    "midi": 71,
+    "rate": 44100,
+    "seconds": 0.16
+   },
+   {
+    "file": "78.ogg",
+    "frames": 45774,
+    "midi": 78,
+    "rate": 44100,
+    "seconds": 1.038
+   },
+   {
+    "file": "84.ogg",
+    "frames": 43096,
+    "midi": 84,
+    "rate": 44100,
+    "seconds": 0.977
+   }
+  ],
+  "sustain": 0.0
+ },
+ "violin": {
+  "gain": 1.0,
+  "name": "小提琴",
+  "samples": [
+   {
+    "file": "56.ogg",
+    "frames": 64140,
+    "midi": 56,
+    "rate": 44100,
+    "seconds": 1.454
+   },
+   {
+    "file": "59.ogg",
+    "frames": 43344,
+    "midi": 59,
+    "rate": 44100,
+    "seconds": 0.983
+   },
+   {
+    "file": "62.ogg",
+    "frames": 41140,
+    "midi": 62,
+    "rate": 44100,
+    "seconds": 0.933
+   },
+   {
+    "file": "65.ogg",
+    "frames": 59152,
+    "midi": 65,
+    "rate": 44100,
+    "seconds": 1.341
+   },
+   {
+    "file": "68.ogg",
+    "frames": 56744,
+    "midi": 68,
+    "rate": 44100,
+    "seconds": 1.287
+   },
+   {
+    "file": "74.ogg",
+    "frames": 75326,
+    "midi": 74,
+    "rate": 44100,
+    "seconds": 1.708
+   },
+   {
+    "file": "77.ogg",
+    "frames": 52288,
+    "midi": 77,
+    "rate": 44100,
+    "seconds": 1.186
+   },
+   {
+    "file": "80.ogg",
+    "frames": 50997,
+    "midi": 80,
+    "rate": 44100,
+    "seconds": 1.156
+   },
+   {
+    "file": "83.ogg",
+    "frames": 66455,
+    "midi": 83,
+    "rate": 44100,
+    "seconds": 1.507
+   },
+   {
+    "file": "86.ogg",
+    "frames": 65434,
+    "midi": 86,
+    "rate": 44100,
+    "seconds": 1.484
+   },
+   {
+    "file": "89.ogg",
+    "frames": 58353,
+    "midi": 89,
+    "rate": 44100,
+    "seconds": 1.323
+   },
+   {
+    "file": "92.ogg",
+    "frames": 50137,
+    "midi": 92,
+    "rate": 44100,
+    "seconds": 1.137
+   }
+  ],
+  "sustain": 0.45
+ },
+ "voiceO": {
+  "gain": 1.0,
+  "name": "合唱 哦",
+  "samples": [
+   {
+    "file": "60.ogg",
+    "frames": 43480,
+    "midi": 60,
+    "rate": 20000,
+    "seconds": 2.174
+   },
+   {
+    "file": "66.ogg",
+    "frames": 61708,
+    "midi": 66,
+    "rate": 28000,
+    "seconds": 2.204
+   },
+   {
+    "file": "72.ogg",
+    "frames": 41284,
+    "midi": 72,
+    "rate": 38000,
+    "seconds": 1.086
+   },
+   {
+    "file": "78.ogg",
+    "frames": 47948,
+    "midi": 78,
+    "rate": 40000,
+    "seconds": 1.199
+   },
+   {
+    "file": "84.ogg",
+    "frames": 38680,
+    "midi": 84,
+    "rate": 30000,
+    "seconds": 1.289
+   }
+  ],
+  "sustain": 0.55
+ },
+ "xylophone": {
+  "gain": 1.1,
+  "name": "木琴条",
+  "samples": [
+   {
+    "file": "60.ogg",
+    "frames": 43429,
+    "midi": 60,
+    "rate": 44100,
+    "seconds": 0.985
+   },
+   {
+    "file": "66.ogg",
+    "frames": 30684,
+    "midi": 66,
+    "rate": 44100,
+    "seconds": 0.696
+   },
+   {
+    "file": "72.ogg",
+    "frames": 31401,
+    "midi": 72,
+    "rate": 44100,
+    "seconds": 0.712
+   },
+   {
+    "file": "78.ogg",
+    "frames": 32607,
+    "midi": 78,
+    "rate": 44100,
+    "seconds": 0.739
+   },
+   {
+    "file": "84.ogg",
+    "frames": 27029,
+    "midi": 84,
+    "rate": 44100,
+    "seconds": 0.613
+   },
+   {
+    "file": "90.ogg",
+    "frames": 27678,
+    "midi": 90,
+    "rate": 44100,
+    "seconds": 0.628
+   },
+   {
+    "file": "96.ogg",
+    "frames": 19442,
+    "midi": 96,
+    "rate": 44100,
+    "seconds": 0.441
+   }
+  ],
+  "sustain": 0.0
+ }
+}

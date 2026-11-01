@@ -1,0 +1,1153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0e1116">
+<title>十四行 Sonnet：阿卡贝拉实时跟谱提示</title>
+<style>
+:root{
+  --bg:#0e1116; --card:#161b22; --card2:#1c232c; --line:#2a323d;
+  --fg:#e6edf3; --dim:#8b949e; --accent:#2dd4bf; --accent2:#38bdf8;
+  --warn:#fbbf24; --bad:#f43f5e; --good:#34d399;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  font-size:15px;line-height:1.5}
+.wrap{max-width:720px;margin:0 auto;padding:14px 14px 40px}
+.top{display:flex;align-items:center;justify-content:space-between;margin:6px 0 14px}
+.brand{font-size:17px;font-weight:700;letter-spacing:.5px}
+.brand span{display:block;font-size:11px;color:var(--dim);font-weight:400;letter-spacing:0}
+.pill{font-size:12px;padding:4px 10px;border-radius:99px;background:var(--card2);
+  border:1px solid var(--line);color:var(--dim);white-space:nowrap}
+.pill.live{color:#052e2b;background:var(--accent);border-color:var(--accent);font-weight:700}
+.pill.lost{color:#3b0505;background:var(--warn);border-color:var(--warn);font-weight:700}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+.card h2{font-size:13px;margin:0 0 10px;color:var(--dim);font-weight:600;letter-spacing:.4px}
+.row{display:flex;flex-wrap:wrap;gap:8px}
+button, .btn{font:inherit;font-size:14px;padding:9px 14px;border-radius:10px;
+  background:var(--card2);color:var(--fg);border:1px solid var(--line);cursor:pointer}
+button:active{transform:scale(.98)}
+button.on{background:var(--accent);color:#052e2b;border-color:var(--accent);font-weight:700}
+button.ghost{background:transparent}
+button.big{width:100%;padding:16px;font-size:17px;font-weight:700;background:var(--accent);
+  color:#052e2b;border:none;border-radius:14px;margin-top:6px}
+button.big.stop{background:var(--bad);color:#fff}
+textarea{width:100%;background:#0b0f14;color:var(--fg);border:1px solid var(--line);
+  border-radius:10px;padding:10px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:12px;line-height:1.45;resize:vertical}
+.hint{font-size:11.5px;color:var(--dim);margin-top:8px;line-height:1.6}
+code{background:#0b0f14;padding:1px 5px;border-radius:4px;font-size:11px;color:var(--accent2)}
+label.fld{display:block;font-size:12px;color:var(--dim);margin:10px 0 4px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+select{width:100%;font:inherit;font-size:14px;padding:9px 10px;border-radius:10px;
+  background:var(--card2);color:var(--fg);border:1px solid var(--line)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+/* 实时面板 */
+.stage{display:grid;grid-template-columns:1fr 1fr;gap:10px;text-align:center}
+.bignote{font-size:44px;font-weight:800;letter-spacing:-1px;line-height:1.1;font-variant-numeric:tabular-nums}
+.subnote{font-size:12px;color:var(--dim);margin-top:2px}
+.boxnext .bignote{font-size:30px;color:var(--accent2);font-weight:700}
+.meter{position:relative;height:46px;margin-top:12px;border-radius:10px;background:#0b0f14;
+  border:1px solid var(--line);overflow:hidden}
+.meter .mid{position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--line)}
+.meter .zone{position:absolute;left:42%;right:42%;top:0;bottom:0;background:rgba(52,211,153,.12)}
+.meter .needle{position:absolute;top:5px;bottom:5px;width:4px;border-radius:2px;background:var(--accent);
+  transform:translateX(-50%);transition:left .06s linear,background .15s}
+.meter .lbl{position:absolute;font-size:10px;color:var(--dim);bottom:2px}
+canvas{width:100%;height:150px;display:block;border-radius:10px;background:#0b0f14;border:1px solid var(--line);margin-top:12px}
+.mini{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);margin-top:6px}
+.bar{height:5px;border-radius:3px;background:#0b0f14;border:1px solid var(--line);overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--accent);width:0%}
+details{margin-top:10px}
+summary{font-size:12px;color:var(--dim);cursor:pointer}
+.tag{display:inline-block;font-size:11px;padding:2px 7px;border-radius:6px;background:var(--card2);
+  border:1px solid var(--line);color:var(--dim);margin-right:4px}
+.ok{color:var(--good)} .bad{color:var(--bad)} .warn{color:var(--warn)}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <div class="brand">十四行<span>Sonnet, a cappella live score</span></div>
+    <div id="status" class="pill">待机</div>
+  </div>
+
+  <!-- 1 谱面 -->
+  <div class="card">
+    <h2>1 · 谱面</h2>
+    <div class="row" style="margin-bottom:10px">
+      <button data-demo="demo1">示例：卡农和声垫</button>
+      <button data-demo="demo2">示例：欢乐颂</button>
+      <button id="btnPickFile" class="ghost">导入 MusicXML</button>
+      <input type="file" id="fileInput" accept=".xml,.musicxml,.mxl,.zip" hidden>
+    </div>
+    <textarea id="scoreText" rows="7" spellcheck="false"></textarea>
+    <div class="hint">
+      每行一个声部：<code>S: G4 2 | C4 4</code>（音名 + 拍数，<code>|</code> 为小节线可省略）<br>
+      <code>r</code>=休止，<code>-</code>=延音；首行可写 <code>bpm 84</code>、<code>bar 4</code>、<code>title 名称</code><br>
+      也可以从 MuseScore / 打谱软件导出 <b>未压缩的 .musicxml</b> 直接导入。
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button id="btnLoad">载入谱面</button>
+      <span id="scoreInfo" class="hint" style="margin:0;align-self:center"></span>
+    </div>
+  </div>
+
+  <!-- 2 声部 -->
+  <div class="card">
+    <h2>2 · 我唱哪个声部</h2>
+    <div class="row" id="partBtns"><span class="hint">先载入谱面</span></div>
+  </div>
+
+  <!-- 3 提示设置 -->
+  <div class="card">
+    <h2>3 · 耳机提示</h2>
+    <label class="fld">提示模式</label>
+    <select id="cueMode">
+      <option value="cue">起音提示（每个新音给一下，推荐）</option>
+      <option value="sustain">持续参考音（练习用，会盖住自己声音）</option>
+      <option value="correct">只在跑调时提示</option>
+      <option value="off">不发声，只看屏幕</option>
+    </select>
+
+    <div class="grid2" style="margin-top:10px">
+      <div>
+        <label class="fld">提示音音量 <span id="vCueVal">70%</span></label>
+        <input type="range" id="vCue" min="0" max="100" value="70">
+      </div>
+      <div>
+        <label class="fld">提示音八度 <span id="octVal">同度</span></label>
+        <input type="range" id="octShift" min="-1" max="1" step="1" value="0">
+      </div>
+      <div>
+        <label class="fld">跑调阈值 <span id="thVal">35 音分</span></label>
+        <input type="range" id="thresh" min="10" max="100" step="5" value="35">
+      </div>
+      <div>
+        <label class="fld">下一音提前预告 <span id="advVal">200 ms</span></label>
+        <input type="range" id="advance" min="0" max="600" step="20" value="200">
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:12px">
+      <button id="btnMetro">节拍器：关</button>
+      <button id="btnNext">下一音预告：关</button>
+      <button id="btnDo">唱名显示：音名</button>
+    </div>
+    <div class="hint">系统延迟（采集+运算+蓝牙耳机）无法凭空消除，但可以<b>提前预告下一个音</b>来补偿——用蓝牙耳机时把这个值调大（200–400ms）。用<b>有线耳机</b>延迟最低。</div>
+  </div>
+
+  <!-- 实时 -->
+  <div class="card">
+    <h2>4 · 实时跟随</h2>
+    <div class="stage">
+      <div>
+        <div class="subnote">现在该唱</div>
+        <div class="bignote" id="curNote">—</div>
+        <div class="subnote" id="curBeat">第 0 小节</div>
+      </div>
+      <div class="boxnext">
+        <div class="subnote">接下来</div>
+        <div class="bignote" id="nextNote">—</div>
+        <div class="subnote" id="nextBeat">&nbsp;</div>
+      </div>
+    </div>
+
+    <div class="meter">
+      <div class="zone"></div><div class="mid"></div>
+      <div class="needle" id="needle" style="left:50%;background:#8b949e"></div>
+      <div class="lbl" style="left:6px">低 50</div>
+      <div class="lbl" style="right:6px">高 50</div>
+    </div>
+    <div class="mini">
+      <span>音准偏差 <b id="centsTxt">—</b></span>
+      <span id="verdict"></span>
+    </div>
+
+    <canvas id="roll"></canvas>
+
+    <div class="mini">
+      <span>麦克风电平 <span id="lvlTxt">0%</span></span>
+      <span>跟随置信度 <span id="confTxt">—</span></span>
+    </div>
+    <div class="bar" style="margin-top:4px"><i id="lvlBar"></i></div>
+  </div>
+
+  <button id="btnStart" class="big">开始跟随</button>
+
+  <div class="card">
+    <h2>怎么用 / 原理</h2>
+    <div class="hint">
+      <b>流程：</b>麦克风 → 实时基频提取（YIN 算法）→ 与你声部的谱面做在线动态时间规整（Online DTW）→ 定位"唱到哪了" → 合成提示音进耳机。<br><br>
+      <b>为什么能听到你：</b>你戴耳机只是听，嘴在唱，手机离你最近，<b>麦克风收进来的最强的就是你自己的声音</b>。算法只跟它比对、对齐，不需要把四个声部分离——复音分离才是真正难的问题，这里绕开了。<br><br>
+      <b>排练建议：</b>① 手机放谱架上、离你 30–50cm；② 用<b>有线耳机</b>（蓝牙会有 150–300ms 延迟，靠"提前量"补偿）；③ 先用"示例谱"确认麦克风和音准表工作正常；④ 正式和音时用<b>起音提示</b>，练声时用<b>持续参考音</b>。<br><br>
+      <b>已知局限：</b>环境很吵、或你旁边的人比你声音大很多时会跟丢（界面会显示"搜索中"，停一下它会自己找回来）；很长的休止段只能按速度推算。
+    </div>
+    <details>
+      <summary>技术细节</summary>
+      <div class="hint" style="margin-top:8px">
+        基频提取：YIN（差分函数 + 累积均值归一化 + 抛物线插值），60–1200Hz，窗长 2048。<br>
+        跟谱：Online DTW，状态 = 音符序号；代价 = 八度容错的半音距离；转移含"停留 / 前进一音 / 跳过一音"，前进惩罚随已唱时值衰减（semi-Markov 近似），因此跑调、抢拍、拖拍都能容忍。<br>
+        提示音：Web Audio 合成正弦 + 弱二次谐波（音叉音色），带 ADSR 包络防爆音。<br>
+        全程本地运行，不联网、不上传任何音频。
+      </div>
+    </details>
+  </div>
+
+</div>
+
+<script>
+"use strict";
+
+/* ============ 基础乐理 ============ */
+const STEP = {C:0,D:2,E:4,F:5,G:7,A:9,B:11};
+const SOLFEGE = {0:"Do",1:"Di",2:"Re",3:"Ri",4:"Mi",5:"Fa",6:"Fi",7:"Sol",8:"Si",9:"La",10:"Li",11:"Ti"};
+const LETTER = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+const FLAT   = {1:"Db",3:"Eb",6:"Gb",8:"Ab",10:"Bb"};
+
+function nameToMidi(s){
+  const m = /^([A-Ga-g])([#b]|is|es)?(-?\d+)$/.exec(String(s).trim());
+  if(!m) return null;
+  const step = STEP[m[1].toUpperCase()];
+  let acc = 0;
+  if(m[2]==="#"||m[2]==="is") acc = 1;
+  else if(m[2]==="b"||m[2]==="es") acc = -1;
+  return (parseInt(m[3],10)+1)*12 + step + acc;
+}
+function midiToFreq(m){ return 440*Math.pow(2,(m-69)/12); }
+function midiToName(m){
+  if(m==null) return "—";
+  const r = Math.round(m), pc = ((r%12)+12)%12;
+  const oct = Math.floor(r/12)-1;
+  return (FLAT[pc]||LETTER[pc]) + oct;
+}
+function midiToSolf(m){
+  if(m==null) return "—";
+  const r = Math.round(m);
+  return SOLFEGE[((r%12)+12)%12] + (Math.floor(r/12)-1);
+}
+
+/* ============ 谱面解析：文本 ============ */
+const PART_NAMES = {S:"Soprano 女高",A:"Alto 女中",T:"Tenor 男高",B:"Bass 男低",
+                    S1:"Soprano 1",S2:"Soprano 2",A1:"Alto 1",A2:"Alto 2",
+                    T1:"Tenor 1",T2:"Tenor 2",B1:"Bass 1",B2:"Bass 2",VP:"Vocal Percussion"};
+
+function parseNoteList(body){
+  const toks = String(body).replace(/\|/g," ").split(/[\s,]+/).filter(Boolean);
+  const notes = [];
+  let i = 0;
+  while(i < toks.length){
+    const t = toks[i];
+    if(t === "-" || t === "_" || t === "~"){
+      let b = 1;
+      if(i+1 < toks.length && /^\d+(\.\d+)?$/.test(toks[i+1])){ b = parseFloat(toks[i+1]); i++; }
+      i++;
+      if(notes.length) notes[notes.length-1].beats += b;
+      continue;
+    }
+    if(/^\d+(\.\d+)?$/.test(t)){ i++; continue; }   // 孤立数字，跳过
+    let beats = 1;
+    if(i+1 < toks.length && /^\d+(\.\d+)?$/.test(toks[i+1])){ beats = parseFloat(toks[i+1]); i++; }
+    i++;
+    if(t === "r" || t === "R" || t === "0"){ notes.push({midi:null, beats}); }
+    else{
+      const midi = nameToMidi(t);
+      if(midi != null) notes.push({midi, beats});
+    }
+  }
+  return notes;
+}
+
+function parseTextScore(text){
+  let bpm = 96, bar = 4, title = "自定义谱面";
+  const parts = [];
+  for(const raw of text.split(/\r?\n/)){
+    const line = raw.trim();
+    if(!line || line.startsWith("#")) continue;
+    let m;
+    if((m = /^(?:title|标题)\s*[：:]?\s*(.+)$/i.exec(line))){ title = m[1].trim(); continue; }
+    if((m = /^bpm\s*[：:]?\s*(\d+(?:\.\d+)?)$/i.exec(line))){ bpm = parseFloat(m[1]); continue; }
+    if((m = /^(?:bar|拍号)\s*[：:]?\s*(\d+)$/i.exec(line))){ bar = parseInt(m[1],10); continue; }
+    if((m = /^([A-Za-z][A-Za-z0-9]{0,3}|[\u4e00-\u9fa5]{1,6})\s*[:：]\s*(.+)$/.exec(line))){
+      const id = m[1].toUpperCase();
+      const notes = parseNoteList(m[2]);
+      if(notes.length) parts.push({id, name:(PART_NAMES[id]||m[1]), notes});
+      continue;
+    }
+  }
+  return {title, bpm, bar, parts};
+}
+
+/* ============ 谱面解析：MusicXML ============ */
+function parseMusicXML(xmlText){
+  const doc = new DOMParser().parseFromString(xmlText, "application/xml");
+  if(doc.querySelector("parsererror")) throw new Error("XML 解析失败");
+  const score = doc.querySelector("score-partwise") || doc.querySelector("score-timewise");
+  if(!score) throw new Error("不是 MusicXML（需要 score-partwise）");
+
+  let bpm = 96, bar = 4;
+  // 速度标记两种写法都要认：<metronome><per-minute> 和 <sound tempo="">
+  const met = score.querySelector("metronome per-minute");
+  if(met && parseFloat(met.textContent)) bpm = parseFloat(met.textContent);
+  else{
+    const snd = score.querySelector("sound[tempo]");
+    if(snd && parseFloat(snd.getAttribute("tempo"))) bpm = parseFloat(snd.getAttribute("tempo"));
+  }
+  const beatsEl = score.querySelector("time beats");
+  if(beatsEl && parseInt(beatsEl.textContent,10)) bar = parseInt(beatsEl.textContent,10);
+
+  const partEls = Array.from(score.querySelectorAll("part"));
+  const parts = [];
+  for(const pe of partEls){
+    const pid = pe.getAttribute("id") || ("P"+(parts.length+1));
+    const sp = score.querySelector('part-list score-part[id="'+cssEsc(pid)+'"]');
+    const pn = sp ? (sp.querySelector("part-name")||sp.querySelector("part-abbreviation")) : null;
+    const rawName = pn ? pn.textContent.trim() : pid;
+    const id = normPartId(rawName) || pid.toUpperCase();
+
+    let divisions = 4;
+    const notes = [];
+    // divisions（每个四分音符的 tick 数）写在 <attributes> 里，不在 <note> 里。
+    // 必须逐小节读取，否则整份谱的音符时值都会按错误基准换算（常见值有 1/2/4/8）
+    for(const me of Array.from(pe.querySelectorAll("measure"))){
+      const dvEl = me.querySelector("attributes divisions");
+      if(dvEl) divisions = Math.max(1, parseInt(dvEl.textContent,10) || divisions);
+      for(const ne of Array.from(me.querySelectorAll("note"))){
+        const durEl = ne.querySelector("duration");
+        let beats = 1;
+        if(durEl) beats = (parseInt(durEl.textContent,10) || divisions) / divisions;
+        if(ne.querySelector("chord")) continue;             // 和弦内音：只保留第一个
+        if(ne.querySelector("grace")) continue;             // 装饰音不计入节奏
+        const rest = ne.querySelector("rest");
+        if(rest){ notes.push({midi:null, beats}); continue; }
+        const p = ne.querySelector("pitch");
+        if(!p) continue;
+        const step = (p.querySelector("step")||{}).textContent;
+        const oct  = parseInt((p.querySelector("octave")||{}).textContent,10);
+        const altEl = p.querySelector("alter");
+        const alter = altEl ? (parseInt(altEl.textContent,10)||0) : 0;
+        if(!step || isNaN(oct)) continue;
+        const midi = (oct+1)*12 + STEP[step.toUpperCase()] + alter;
+        const tied = ne.querySelector('tie[type="stop"]') ||
+                     ne.querySelector('notations tied[type="stop"]');
+        if(tied && notes.length && notes[notes.length-1].midi === midi){
+          notes[notes.length-1].beats += beats;
+        }else{
+          notes.push({midi, beats});
+        }
+      }
+    }
+    if(notes.length) parts.push({id, name:(PART_NAMES[id]||rawName), notes});
+  }
+  let title = "导入的谱面";
+  const tEl = score.querySelector("work work-title");
+  if(tEl && tEl.textContent.trim()) title = tEl.textContent.trim();
+  return {title, bpm, bar, parts};
+}
+/* ===== .mxl 支持：MuseScore 默认导出的是压缩后的 zip，需要解开 ===== */
+async function readScoreFile(file){
+  const name = (file.name || "").toLowerCase();
+  if(name.endsWith(".mscz") || name.endsWith(".mscx"))
+    throw new Error("这是 MuseScore 工程文件，不是乐谱交换格式。请用 MuseScore 打开它，再「文件 → 导出 → Uncompressed MusicXML」");
+  if(name.endsWith(".pdf"))
+    throw new Error("PDF 里只有图形、没有音符数据，无法解析。请回到打谱软件导出 MusicXML");
+  if(name.endsWith(".mxl") || name.endsWith(".zip")){
+    const buf = new Uint8Array(await file.arrayBuffer());
+    return parseMusicXML(await unzipScoreXml(buf));
+  }
+  return parseMusicXML(await file.text());
+}
+
+async function unzipScoreXml(u8){
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  const u32 = (o) => dv.getUint32(o, true), u16 = (o) => dv.getUint16(o, true);
+  const SIG_CD = 0x02014b50, SIG_EOCD = 0x06054b50;
+  let eocd = -1;
+  for(let i = u8.length - 22; i >= 0 && i >= u8.length - 65558; i--){
+    if(u32(i) === SIG_EOCD){ eocd = i; break; }
+  }
+  if(eocd < 0) throw new Error("不是有效的 .mxl 压缩包");
+  const count = u16(eocd + 10);
+  let cd = u32(eocd + 16);
+  const entries = [];
+  for(let n = 0; n < count; n++){
+    if(u32(cd) !== SIG_CD) break;
+    const method = u16(cd+10), csize = u32(cd+20), usize = u32(cd+24);
+    const nlen = u16(cd+28), elen = u16(cd+30), clen = u16(cd+32), lho = u32(cd+42);
+    const fname = new TextDecoder().decode(u8.subarray(cd+46, cd+46+nlen));
+    const lnlen = u16(lho+26), lelen = u16(lho+28);
+    entries.push({fname, method, csize, usize, off: lho + 30 + lnlen + lelen});
+    cd += 46 + nlen + elen + clen;
+  }
+  if(!entries.length) throw new Error("压缩包是空的");
+
+  // 规范做法：先看 META-INF/container.xml 指明的乐谱路径
+  let target = null;
+  const cont = entries.find(e => /META-INF\/container\.xml$/i.test(e.fname));
+  if(cont){
+    try{
+      const txt = await inflateEntry(u8, cont);
+      const m = /full-path\s*=\s*"([^"]+)"/.exec(txt);
+      if(m) target = entries.find(e => e.fname === m[1]) || null;
+    }catch(e){ /* container 读不了就退回按文件名猜 */ }
+  }
+  if(!target){
+    const cands = entries.filter(e => !/^META-INF\//i.test(e.fname) && /\.(xml|musicxml)$/i.test(e.fname));
+    if(!cands.length) throw new Error("包里没找到乐谱 xml");
+    cands.sort((a,b) => b.csize - a.csize);   // 乐谱文件通常远大于元数据
+    target = cands[0];
+  }
+  return await inflateEntry(u8, target);
+}
+
+async function inflateEntry(u8, e){
+  const raw = u8.subarray(e.off, e.off + e.csize);
+  if(e.method === 0) return new TextDecoder("utf-8").decode(raw);
+  if(e.method !== 8) throw new Error("不支持的压缩方式（method=" + e.method + "）");
+  if(typeof DecompressionStream === "undefined")
+    throw new Error("当前浏览器不支持解压 .mxl，请在 MuseScore 里改导出「Uncompressed MusicXML (*.xml)」");
+  const stream = new Blob([raw]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return await new Response(stream).text();
+}
+
+function cssEsc(s){ return String(s).replace(/["\\]/g,"\\$&"); }
+function normPartId(name){
+  const s = String(name).trim();
+  const direct = s.toUpperCase().replace(/[^A-Z0-9]/g,"");
+  if(PART_NAMES[direct]) return direct;
+  if(/sop|女高|高音/i.test(s)) return "S";
+  if(/alt|女中|中音|次高/i.test(s)) return "A";
+  if(/ten|男高|次中/i.test(s)) return "T";
+  if(/bas|男低|低音/i.test(s)) return "B";
+  return direct.slice(0,3) || null;
+}
+
+/* ============ 内置示例 ============ */
+const DEMOS = {
+  demo1: {title:"卡农和声垫（C大调 8小节）", bpm:84, bar:4,
+    parts:[
+      {id:"S",name:PART_NAMES.S,notes:[
+        {midi:nameToMidi("G4"),beats:4},{midi:nameToMidi("G4"),beats:4},
+        {midi:nameToMidi("A4"),beats:4},{midi:nameToMidi("G4"),beats:4},
+        {midi:nameToMidi("A4"),beats:4},{midi:nameToMidi("G4"),beats:4},
+        {midi:nameToMidi("A4"),beats:4},{midi:nameToMidi("G4"),beats:4}]},
+      {id:"A",name:PART_NAMES.A,notes:[
+        {midi:nameToMidi("E4"),beats:4},{midi:nameToMidi("D4"),beats:4},
+        {midi:nameToMidi("E4"),beats:4},{midi:nameToMidi("B3"),beats:4},
+        {midi:nameToMidi("F4"),beats:4},{midi:nameToMidi("E4"),beats:4},
+        {midi:nameToMidi("C4"),beats:4},{midi:nameToMidi("D4"),beats:4}]},
+      {id:"T",name:PART_NAMES.T,notes:[
+        {midi:nameToMidi("C4"),beats:4},{midi:nameToMidi("B3"),beats:4},
+        {midi:nameToMidi("C4"),beats:4},{midi:nameToMidi("E3"),beats:4},
+        {midi:nameToMidi("C4"),beats:4},{midi:nameToMidi("C4"),beats:4},
+        {midi:nameToMidi("F3"),beats:4},{midi:nameToMidi("B3"),beats:4}]},
+      {id:"B",name:PART_NAMES.B,notes:[
+        {midi:nameToMidi("C3"),beats:4},{midi:nameToMidi("G2"),beats:4},
+        {midi:nameToMidi("A2"),beats:4},{midi:nameToMidi("E2"),beats:4},
+        {midi:nameToMidi("F2"),beats:4},{midi:nameToMidi("C3"),beats:4},
+        {midi:nameToMidi("F2"),beats:4},{midi:nameToMidi("G2"),beats:4}]}
+    ]},
+  demo2: {title:"欢乐颂（Ode to Joy · 示范四部和声）", bpm:100, bar:4,
+    parts:[
+      {id:"S",name:PART_NAMES.S,notes:parseNoteList(
+        "E4 1 E4 1 F4 1 G4 1 | G4 1 F4 1 E4 1 D4 1 | C4 1 C4 1 D4 1 E4 1 | E4 1.5 D4 0.5 D4 2 | E4 1 E4 1 F4 1 G4 1 | G4 1 F4 1 E4 1 D4 1 | C4 1 C4 1 D4 1 E4 1 | D4 1.5 C4 0.5 C4 2")},
+      {id:"A",name:PART_NAMES.A,notes:parseNoteList(
+        "C4 2 D4 2 | C4 2 D4 2 | G3 4 | G3 2 B3 2 | C4 2 D4 2 | C4 2 D4 2 | G3 4 | B3 2 G3 2")},
+      {id:"T",name:PART_NAMES.T,notes:parseNoteList(
+        "G3 2 B3 2 | G3 2 B3 2 | E3 4 | E3 2 D3 2 | G3 2 B3 2 | G3 2 B3 2 | E3 4 | D3 2 E3 2")},
+      {id:"B",name:PART_NAMES.B,notes:parseNoteList(
+        "C3 2 G2 2 | C3 2 G2 2 | C3 4 | C3 2 G2 2 | C3 2 G2 2 | C3 2 G2 2 | C3 4 | G2 2 C3 2")}
+    ]}
+};
+
+/* ============ 音高检测：YIN ============ */
+class YinDetector{
+  constructor(sampleRate, bufSize){
+    this.sr = sampleRate;
+    this.N = bufSize || 2048;
+    this.minLag = Math.max(2, Math.floor(this.sr/1200));
+    this.maxLag = Math.min(Math.floor(this.N/2), Math.floor(this.sr/60));
+    this.W = this.N - this.maxLag;
+    this.d = new Float32Array(this.maxLag+1);
+    this.cmnd = new Float32Array(this.maxLag+1);
+  }
+  detect(buf){
+    const N=this.N, W=this.W, minLag=this.minLag, maxLag=this.maxLag, d=this.d, c=this.cmnd;
+    let energy = 0;
+    for(let i=0;i<N;i++) energy += buf[i]*buf[i];
+    const rms = Math.sqrt(energy/N);
+    if(rms < 1e-5) return {freq:0, clarity:0, rms:0};
+
+    for(let lag=1; lag<=maxLag; lag++){
+      let s = 0;
+      for(let i=0;i<W;i++){
+        const diff = buf[i] - buf[i+lag];
+        s += diff*diff;
+      }
+      d[lag] = s;
+    }
+    // 累积均值归一化差分（标准 YIN：从 lag=1 起累积）
+    let run = 0;
+    for(let lag=1; lag<=maxLag; lag++){
+      run += d[lag];
+      c[lag] = run > 0 ? (d[lag]*lag)/run : 1;
+    }
+    const THRESH = 0.12;
+    let chosen = -1;
+    for(let lag=minLag; lag<maxLag-1; lag++){
+      if(c[lag] < THRESH && c[lag] <= c[lag+1]){ chosen = lag; break; }
+    }
+    if(chosen < 0){
+      let best = 1e9, bl = -1;
+      for(let lag=minLag; lag<=maxLag; lag++){ if(c[lag] < best){ best = c[lag]; bl = lag; } }
+      if(bl < 0 || best > 0.35) return {freq:0, clarity:0, rms};
+      chosen = bl;
+    }
+    // 抛物线插值
+    let lagF = chosen;
+    const x0 = c[Math.max(minLag,chosen-1)], x1 = c[chosen], x2 = c[Math.min(maxLag,chosen+1)];
+    const denom = (x0 - 2*x1 + x2);
+    if(Math.abs(denom) > 1e-12) lagF = chosen + 0.5*(x0 - x2)/denom;
+    const freq = this.sr / lagF;
+    return {freq, clarity: Math.max(0, 1 - c[chosen]), rms};
+  }
+}
+
+/* ============ 跟谱：Online DTW ============ */
+class Follower{
+  constructor(notes, opts){
+    this.notes = notes;                       // [{midi,beats}]
+    this.n = notes.length;
+    this.bpm = opts.bpm || 96;
+    this.secPerBeat = 60/this.bpm;            // 用真实时间建模，与帧率无关
+    this.W_STEP = 1.5;                        // 前进一音的基础惩罚
+    this.W_SKIP = 3.0;                        // 一次跳两音的惩罚
+    this.ONSET_BONUS = 0.35;                  // 起音时给"前进"的奖励（重复同音高靠它区分）
+    this.reset();
+  }
+  reset(){
+    this.cum = new Float64Array(this.n);
+    this.hold = new Float64Array(this.n);
+    for(let j=0;j<this.n;j++) this.cum[j] = j*0.25;   // 轻微偏好靠前
+    this.prev = this.cum.slice();
+    this.prevHold = this.hold.slice();
+    this.pos = 0;
+    this.trace = [];
+    this.lastObsMidi = null;
+    this.silentFrames = 0;
+  }
+  // 单个音符的匹配代价
+  cost(j, obs){
+    const t = this.notes[j].midi;
+    const clarity = obs.clarity;
+    if(obs.midi == null){                      // 静音 / 检测不出
+      return t == null ? 0.05 : 0.30;          // 谱上是休止 → 几乎不罚；否则轻罚
+    }
+    if(t == null) return 0.28;                 // 谱上休止，但你出声了
+    let best = 1e9;
+    for(let k=-1;k<=1;k++){                    // 八度容错
+      const diff = Math.abs(obs.midi + 12*k - t);
+      if(diff < best) best = diff;
+    }
+    let c = Math.min(best, 12) / 12 * 2.2;     // 差一个八度以内：0~2.2
+    return c * (0.45 + 0.55*clarity);          // 检测越不确定，代价越"中庸"
+  }
+  // 停留时长足够后，前进惩罚衰减（semi-Markov 近似）；时长单位为秒
+  stepPen(holdSec, beats){
+    const expect = Math.max(0.08, beats * this.secPerBeat);
+    const frac = holdSec / (0.55*expect);
+    return this.W_STEP * Math.max(0, 1 - frac);
+  }
+  push(obs, dt, onset){
+    if(!(dt > 0)) dt = 1/30;
+    onset = !!onset;
+    const n = this.n, prev = this.prev, prevHold = this.prevHold;
+    const cur = new Float64Array(n), curHold = new Float64Array(n);
+    for(let j=0;j<n;j++){
+      let best = prev[j], pred = j;                                  // 停留
+      if(j>0){
+        // 检测到重新起音时，前进变成"奖励"（连续同音高音的代价差为 0，只能靠这个推动）
+        let pen = this.stepPen(prevHold[j-1], this.notes[j-1].beats);
+        if(onset) pen = -this.ONSET_BONUS;
+        const v = prev[j-1] + pen;
+        if(v < best){ best = v; pred = j-1; }
+      }
+      if(j>1){
+        const v = prev[j-1-1] + (onset ? this.W_SKIP*0.5 : this.W_SKIP);
+        if(v < best){ best = v; pred = j-2; }
+      }
+      cur[j] = best + this.cost(j, obs) * dt;   // 代价按时间积分 → 与帧率无关
+      curHold[j] = (pred === j) ? prevHold[j] + dt : 0;
+    }
+    // 数值稳定：减去最小值
+    let mn = Infinity;
+    for(let j=0;j<n;j++) if(cur[j] < mn) mn = cur[j];
+    for(let j=0;j<n;j++) cur[j] -= mn;
+
+    this.prev = cur; this.prevHold = curHold; this.hold = curHold;
+    // 平局时偏好靠后的位置：连续同音高时停留与前进代价完全相等，
+    // 若一律取靠前就会永远卡在重复音的第一个音上（音乐总是往前走的）
+    let bj = 0, bv = Infinity;
+    for(let j=0;j<n;j++){
+      const key = cur[j] - 1e-6*j;
+      if(key < bv){ bv = key; bj = j; }
+    }
+    this.pos = bj;
+    this.spread = bv;                          // 越小越确定
+
+    if(obs.midi != null){
+      this.lastObsMidi = obs.midi;
+      this.silentFrames = 0;
+    }else{
+      this.silentFrames++;
+    }
+    this.trace.push({pos:bj, midi:obs.midi, c:obs.clarity});
+    if(this.trace.length > 320) this.trace.shift();
+    return bj;
+  }
+  // 置信度：最优与次优的差距
+  confidence(){
+    if(!this.prev) return 0;
+    let b1 = Infinity, b2 = Infinity;
+    for(let j=0;j<this.n;j++){
+      const v = this.prev[j];
+      if(v < b1){ b2 = b1; b1 = v; } else if(v < b2){ b2 = v; }
+    }
+    if(!isFinite(b2)) return 1;
+    return Math.max(0, Math.min(1, (b2-b1)/1.2));
+  }
+}
+
+/* ============ 提示音合成 ============ */
+class CueEngine{
+  constructor(ctx){
+    this.ctx = ctx;
+    this.master = ctx.createGain();
+    this.master.gain.value = 0.7;
+    this.master.connect(ctx.destination);
+    this.sustainNodes = null;
+  }
+  setVolume(v){ this.master.gain.value = v; }
+  tone(freq, durSec, gain, when){
+    const ctx = this.ctx;
+    const t0 = (when != null ? when : ctx.currentTime) + 0.001;
+    const g = ctx.createGain();
+    g.connect(this.master);
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(gain, t0 + 0.012);
+    g.gain.setValueAtTime(gain, t0 + Math.max(0.02, durSec - 0.05));
+    g.gain.linearRampToValueAtTime(0, t0 + durSec);
+
+    const o1 = ctx.createOscillator();
+    o1.type = "sine"; o1.frequency.value = freq;
+    o1.connect(g); o1.start(t0); o1.stop(t0 + durSec + 0.02);
+
+    const g2 = ctx.createGain(); g2.gain.value = 0.18; g2.connect(g);
+    const o2 = ctx.createOscillator();
+    o2.type = "sine"; o2.frequency.value = freq*2;
+    o2.connect(g2); o2.start(t0); o2.stop(t0 + durSec + 0.02);
+    return {stop(){ try{o1.stop();o2.stop();}catch(e){} }};
+  }
+  click(strong, vol){
+    const ctx = this.ctx, t0 = ctx.currentTime + 0.001;
+    const g = ctx.createGain(); g.connect(this.master);
+    const peak = (strong ? 0.5 : 0.28) * (vol==null?1:vol);
+    g.gain.setValueAtTime(peak, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.05);
+    const o = ctx.createOscillator();
+    o.type = "square"; o.frequency.value = strong ? 1600 : 1100;
+    o.connect(g); o.start(t0); o.stop(t0 + 0.06);
+  }
+  startSustain(freq, gain){
+    this.stopSustain();
+    const ctx = this.ctx;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, ctx.currentTime);
+    g.gain.linearRampToValueAtTime(gain, ctx.currentTime + 0.05);
+    g.connect(this.master);
+    const o = ctx.createOscillator();
+    o.type = "sine"; o.frequency.value = freq;
+    o.connect(g); o.start();
+    this.sustainNodes = {o, g};
+  }
+  setSustainFreq(freq){
+    if(this.sustainNodes) this.sustainNodes.o.frequency.setTargetAtTime(freq, this.ctx.currentTime, 0.02);
+  }
+  stopSustain(){
+    if(!this.sustainNodes) return;
+    const {o,g} = this.sustainNodes;
+    const t = this.ctx.currentTime;
+    g.gain.cancelScheduledValues(t);
+    g.gain.setValueAtTime(g.gain.value, t);
+    g.gain.linearRampToValueAtTime(0, t + 0.06);
+    try{ o.stop(t + 0.1); }catch(e){}
+    this.sustainNodes = null;
+  }
+}
+
+/* ============ 应用状态 ============ */
+const S = {
+  score: null, myPart: 0, running: false,
+  ctx:null, analyser:null, stream:null, det:null, follower:null, cue:null,
+  raf:0, frames:0, lastT:0, fps:30,
+  settings:{ mode:"cue", vol:0.7, oct:0, thresh:35, advance:0,
+             metro:false, nextCue:false, solf:false },
+  lastPos:-1, lastCueTime:0, lastCorrectCue:0, nextCuedFor:-1,
+  metroLastBeat:-1, smoothedCents:null, trace:[],
+  prevObsMidi:null, prevRms:0, lastOnsetMs:0, silentMs:0
+};
+
+const $ = (id) => document.getElementById(id);
+
+/* ============ 载入谱面 ============ */
+function loadScore(score){
+  if(!score || !score.parts || !score.parts.length){
+    $("scoreInfo").innerHTML = '<span class="bad">没解析出声部</span>'; return;
+  }
+  S.score = score;
+  // 预计算每声部的累积拍位
+  for(const p of score.parts){
+    let acc = 0;
+    p.startBeats = p.notes.map(n => { const b = acc; acc += n.beats; return b; });
+    p.totalBeats = acc;
+  }
+  if(S.myPart >= score.parts.length) S.myPart = 0;
+
+  const pb = $("partBtns"); pb.innerHTML = "";
+  score.parts.forEach((p,i) => {
+    const b = document.createElement("button");
+    b.textContent = p.id + " · " + p.name;
+    b.className = (i === S.myPart) ? "on" : "";
+    b.onclick = () => {
+      S.myPart = i;
+      Array.from(pb.children).forEach((c,k) => c.className = (k===i) ? "on" : "");
+    };
+    pb.appendChild(b);
+  });
+  $("scoreInfo").innerHTML = '<span class="ok">已载入</span> · ' + esc(score.title) +
+    ' · ' + score.parts.length + ' 声部 · ' + score.bpm + ' BPM · ' + score.bar + '/4';
+  $("status").className = "pill";
+  $("status").textContent = "待机";
+  resetLiveDisplay();
+}
+
+// 载入/切换谱面时把实时面板清回初始态
+function resetLiveDisplay(){
+  $("curNote").textContent = "—";
+  $("curBeat").textContent = "第 0 小节";
+  $("nextNote").textContent = "—";
+  $("nextBeat").innerHTML = "&nbsp;";
+  const nd = $("needle"); nd.style.left = "50%"; nd.style.background = "#8b949e";
+  $("centsTxt").textContent = "—"; $("verdict").textContent = "";
+  $("confTxt").textContent = "—";
+}
+
+function scoreToText(sc){
+  const L = ["bpm " + sc.bpm, "bar " + sc.bar, "title " + sc.title];
+  for(const p of sc.parts){
+    L.push(p.id + ": " + p.notes.map(n => (n.midi==null ? "r" : midiToName(n.midi)) + " " + n.beats).join(" "));
+  }
+  return L.join("\n");
+}
+function esc(s){ return String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+
+/* ============ 实时循环 ============ */
+async function start(){
+  if(!S.score){ alert("先载入谱面"); return; }
+  // iOS Safari 要求 AudioContext 在用户手势的同步部分创建/恢复，
+  // await 之后就丢失手势上下文了，所以这一步必须放在请求麦克风之前
+  S.ctx = S.ctx || new (window.AudioContext || window.webkitAudioContext)();
+  if(S.ctx.state === "suspended") S.ctx.resume();
+  try{
+    S.stream = await navigator.mediaDevices.getUserMedia({
+      audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false }
+    });
+  }catch(e){
+    $("status").className = "pill lost";
+    $("status").textContent = "麦克风被拒绝";
+    alert("需要麦克风权限才能跟随：" + e.message);
+    return;
+  }
+  if(S.ctx.state === "suspended") await S.ctx.resume();
+
+  const src = S.ctx.createMediaStreamSource(S.stream);
+  S.srcNode = src;
+  S.analyser = S.ctx.createAnalyser();
+  S.analyser.fftSize = 2048;
+  S.analyser.smoothingTimeConstant = 0;
+  src.connect(S.analyser);
+
+  S.det = new YinDetector(S.ctx.sampleRate, 2048);
+  S.cue = S.cue || new CueEngine(S.ctx);
+  S.cue.setVolume(S.settings.vol);
+  S.follower = new Follower(S.score.parts[S.myPart].notes, {bpm:S.score.bpm});
+  S.lastPos = -1; S.nextCuedFor = -1; S.metroLastBeat = -1;
+  S.smoothedCents = null; S.trace = [];
+  S.prevObsMidi = null; S.prevRms = 0; S.lastOnsetMs = 0; S.silentMs = 0;
+  S.frames = 0; S.lastT = performance.now();
+
+  S.running = true;
+  $("btnStart").textContent = "停止";
+  $("btnStart").className = "big stop";
+  $("status").className = "pill live";
+  $("status").textContent = "跟随中";
+  S.raf = requestAnimationFrame(loop);
+}
+
+function stop(){
+  S.running = false;
+  cancelAnimationFrame(S.raf);
+  if(S.cue) S.cue.stopSustain();
+  if(S.srcNode){ try{ S.srcNode.disconnect(); }catch(e){} S.srcNode = null; }
+  if(S.analyser){ try{ S.analyser.disconnect(); }catch(e){} }
+  if(S.stream){ S.stream.getTracks().forEach(t => t.stop()); S.stream = null; }
+  $("btnStart").textContent = "开始跟随";
+  $("btnStart").className = "big";
+  $("status").className = "pill";
+  $("status").textContent = "已停止";
+}
+
+let buf = null;
+function loop(){
+  if(!S.running) return;
+  const now = performance.now();
+  const dt = (now - S.lastT)/1000;
+  if(dt >= 1/(S.fps*1.15)){                 // 限帧，约 30fps
+    S.lastT = now;
+    tick(Math.min(dt, 0.5));                 // 把真实经过时间交给跟谱器
+  }
+  drawRoll();
+  S.raf = requestAnimationFrame(loop);
+}
+
+function tick(dt){
+  const an = S.analyser;
+  if(!an) return;
+  if(!buf || buf.length !== an.fftSize) buf = new Float32Array(an.fftSize);
+  an.getFloatTimeDomainData(buf);
+
+  const r = S.det.detect(buf);
+  let obsMidi = null;
+  if(r.freq > 0 && r.clarity > 0.45 && r.rms > 0.006){
+    obsMidi = 69 + 12*Math.log2(r.freq/440);
+  }
+  // 起音检测：静音→出声，或能量突增（连续同音高的音符只能靠这个分开）
+  let onset = false;
+  const nowMs = performance.now();
+  if(obsMidi != null){
+    // 要真的停了一小会儿才算重新起音（单帧检测丢失不算，否则会乱跳）
+    if(S.prevObsMidi == null && S.silentMs > 60) onset = true;   // 用时间而非帧数，才与帧率无关
+    else if(S.prevObsMidi != null && Math.abs(obsMidi - S.prevObsMidi) > 0.6) onset = true;
+    // 重新咬字的能量峰值：同音高连唱（mi mi）只能靠这个分开
+    else if(S.prevObsMidi != null && r.rms > 0.02 && r.rms > 2.2*S.prevRms) onset = true;
+  }
+  if(onset && nowMs - S.lastOnsetMs < 150) onset = false;   // 去抖
+  if(onset) S.lastOnsetMs = nowMs;
+  S.silentMs = (obsMidi == null) ? S.silentMs + dt*1000 : 0;
+  S.prevObsMidi = obsMidi; S.prevRms = r.rms;
+
+  const obs = {midi:obsMidi, clarity:r.clarity};
+  const pos = S.follower.push(obs, dt, onset);
+  S.frames++;
+
+  // 麦克风电平
+  const lvl = Math.min(1, r.rms*12);
+  $("lvlTxt").textContent = Math.round(lvl*100) + "%";
+  $("lvlBar").style.width = (lvl*100) + "%";
+  $("lvlBar").style.background = r.rms > 0.006 ? "var(--accent)" : "var(--dim)";
+
+  // 置信度
+  const conf = S.follower.confidence();
+  $("confTxt").textContent = Math.round(conf*100) + "%";
+  const lost = conf < 0.18 && S.follower.silentFrames > 4;
+  if(S.running){
+    $("status").className = "pill " + (lost ? "lost" : "live");
+    $("status").textContent = lost ? "搜索中…" : "跟随中";
+  }
+
+  const notes = S.score.parts[S.myPart].notes;
+  const target = notes[pos] ? notes[pos].midi : null;
+
+  // 音准偏差（八度归一，取最接近的）
+  let cents = null;
+  if(obsMidi != null && target != null){
+    let d = obsMidi - target;
+    while(d > 6) d -= 12;
+    while(d < -6) d += 12;
+    cents = d*100;
+    S.smoothedCents = (S.smoothedCents == null) ? cents : S.smoothedCents*0.6 + cents*0.4;
+  }else{
+    S.smoothedCents = (S.smoothedCents == null) ? null : S.smoothedCents*0.8;
+  }
+  updateMeter(S.smoothedCents, target);
+
+  // 显示
+  const N = S.settings.solf ? midiToSolf : midiToName;
+  $("curNote").textContent = target == null ? "休止" : N(target);
+  const barLen = S.score.bar;
+  const beatNow = S.score.parts[S.myPart].startBeats[pos] || 0;
+  $("curBeat").textContent = "第 " + (Math.floor(beatNow/barLen)+1) + " 小节 · 第 " + (beatNow%barLen+1) + " 拍 · 音 " + (pos+1) + "/" + notes.length;
+
+  let nxt = null, nxtBeats = 0;
+  for(let k=pos+1;k<notes.length;k++){ if(notes[k].midi != null){ nxt = notes[k].midi; nxtBeats = notes[k].beats; break; } }
+  $("nextNote").textContent = nxt == null ? "—" : N(nxt);
+  $("nextBeat").textContent = nxt == null ? "（结束）" : nxtBeats + " 拍";
+
+  // ===== 提示逻辑 =====
+  const st = S.settings;
+  const oct = st.oct*12;
+  const advanceSec = st.advance/1000;
+  const part = S.score.parts[S.myPart];
+
+  if(pos !== S.lastPos){
+    S.lastPos = pos;
+    S.nextCuedFor = -1;
+    if(target != null){
+      if(st.mode === "cue"){
+        S.cue.tone(midiToFreq(target + oct), 0.22, 0.85, S.ctx.currentTime + Math.max(0, 0.02));
+      }else if(st.mode === "sustain"){
+        S.cue.startSustain(midiToFreq(target + oct), 0.35);
+      }
+    }else if(st.mode === "sustain"){
+      S.cue.stopSustain();
+    }
+  }
+
+  if(st.mode === "sustain" && target == null) S.cue.stopSustain();
+
+  // 跑调纠正
+  if(st.mode === "correct" && cents != null && Math.abs(cents) > st.thresh){
+    const t = performance.now();
+    if(t - S.lastCorrectCue > 900){
+      S.lastCorrectCue = t;
+      S.cue.tone(midiToFreq(target + oct), 0.30, 0.9);
+    }
+  }
+
+  // 下一音提前预告：当前音还剩不到 advance 毫秒时，先给一下下一音
+  if(st.nextCue && nxt != null && S.nextCuedFor !== pos && st.advance > 0){
+    const elapsed = S.follower.hold[S.follower.pos];   // 秒
+    const expectSec = Math.max(0.08, (notes[pos] ? notes[pos].beats : 1) * S.follower.secPerBeat);
+    const remainSec = Math.max(0, expectSec - elapsed);
+    if(remainSec <= st.advance/1000){
+      S.nextCuedFor = pos;
+      S.cue.tone(midiToFreq(nxt + oct), 0.16, 0.42);
+    }
+  }
+
+  // 节拍器：按谱面拍点
+  if(st.metro){
+    const beatNowF = beatNow + (S.follower.hold[S.follower.pos] / S.follower.secPerBeat);
+    const b = Math.floor(beatNowF);
+    if(b !== S.metroLastBeat){
+      S.metroLastBeat = b;
+      S.cue.click(Math.floor(beatNowF) % S.score.bar === 0, 0.8);
+    }
+  }
+}
+
+function updateMeter(cents, target){
+  const nd = $("needle"), tx = $("centsTxt"), vd = $("verdict");
+  if(cents == null){
+    nd.style.left = "50%"; nd.style.background = "#8b949e";
+    tx.textContent = "—"; vd.textContent = ""; return;
+  }
+  const c = Math.max(-50, Math.min(50, cents));
+  nd.style.left = (50 + c/50*50) + "%";
+  const a = Math.abs(cents);
+  let col = "var(--good)", word = "准";
+  if(a > 35){ col = "var(--bad)"; word = "跑调"; }
+  else if(a > 15){ col = "var(--warn)"; word = "有点偏"; }
+  nd.style.background = col;
+  tx.textContent = (cents>=0?"+":"") + Math.round(cents) + " 音分";
+  vd.innerHTML = '<span style="color:'+col+'">'+word+'</span>' +
+    (cents > 8 ? " · 偏高" : cents < -8 ? " · 偏低" : "");
+}
+
+/* ============ 卷帘绘制 ============ */
+const cv = $("roll");
+const cx = cv.getContext("2d");
+function fitCanvas(){
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w*dpr; cv.height = h*dpr;
+  cx.setTransform(dpr,0,0,dpr,0,0);
+}
+window.addEventListener("resize", fitCanvas);
+
+function drawRoll(){
+  if(!S.score){ return; }
+  const w = cv.clientWidth, h = cv.clientHeight;
+  const myPart = S.score.parts[S.myPart];
+  const notes = myPart.notes;
+  const pos = S.follower ? S.follower.pos : 0;
+  const curBeat = myPart.startBeats[pos] || 0;
+  const viewBeats = 16;
+  const startBeat = Math.max(0, curBeat - 4);
+
+  // 音高范围
+  let lo = 127, hi = 0;
+  for(const p of S.score.parts) for(const n of p.notes){ if(n.midi!=null){ if(n.midi<lo)lo=n.midi; if(n.midi>hi)hi=n.midi; } }
+  if(S.follower && S.follower.lastObsMidi != null){
+    lo = Math.min(lo, Math.floor(S.follower.lastObsMidi));
+    hi = Math.max(hi, Math.ceil(S.follower.lastObsMidi));
+  }
+  if(lo>hi){ lo=60; hi=72; }
+  lo -= 1; hi += 1;
+  const pad = 6;
+  const yOf = (m) => pad + (hi - m)/(hi-lo) * (h - pad*2);
+  const xOf = (b) => (b - startBeat)/viewBeats * w;
+
+  cx.clearRect(0,0,w,h);
+
+  // 小节线
+  const barLen = S.score.bar;
+  for(let b = Math.ceil(startBeat/barLen)*barLen; b < startBeat+viewBeats; b += barLen){
+    const x = xOf(b);
+    cx.strokeStyle = "#1e2530"; cx.lineWidth = 1;
+    cx.beginPath(); cx.moveTo(x,0); cx.lineTo(x,h); cx.stroke();
+  }
+
+  // 其他声部
+  S.score.parts.forEach((p, pi) => {
+    if(pi === S.myPart) return;
+    cx.fillStyle = "rgba(160,172,188,.45)";
+    p.notes.forEach((n,i) => {
+      if(n.midi == null) return;
+      const x = xOf(p.startBeats[i]), ww = Math.max(2, n.beats/viewBeats*w - 1.5);
+      if(x+ww < 0 || x > w) return;
+      cx.fillRect(x, yOf(n.midi)-3.5, ww, 7);
+    });
+  });
+
+  // 我的声部（比我高的音画在上层，颜色更实）
+  notes.forEach((n,i) => {
+    if(n.midi == null) return;
+    const x = xOf(myPart.startBeats[i]), ww = Math.max(2, n.beats/viewBeats*w - 1.5);
+    if(x+ww < 0 || x > w) return;
+    const isCur = (i === pos);
+    cx.fillStyle = isCur ? "#ffffff" : "rgba(70,224,205,.95)";
+    cx.fillRect(x, yOf(n.midi)-5, ww, 10);
+  });
+
+  // 我实际唱的音高轨迹
+  if(S.follower && S.follower.trace.length){
+    const tr = S.follower.trace;
+    cx.strokeStyle = "rgba(56,189,248,.85)"; cx.lineWidth = 2;
+    cx.beginPath();
+    let started = false;
+    // 同一 pos 内的点按顺序铺开
+    const counters = {};
+    const totals = {};
+    for(const t of tr) totals[t.pos] = (totals[t.pos]||0) + 1;
+    for(const t of tr){
+      if(t.midi == null || t.c < 0.45){ continue; }
+      const idx = (counters[t.pos] = (counters[t.pos]||0));
+      counters[t.pos] = idx + 1;
+      const frac = totals[t.pos] > 1 ? idx/(totals[t.pos]-1) : 0.5;
+      const nb = notes[t.pos] ? notes[t.pos].beats : 1;
+      const b = (myPart.startBeats[t.pos]||0) + frac*nb;
+      const x = xOf(b), y = yOf(t.midi);
+      if(x < -10 || x > w+10) continue;
+      if(!started){ cx.moveTo(x,y); started = true; } else cx.lineTo(x,y);
+    }
+    if(started) cx.stroke();
+  }
+
+  // 当前位置指示
+  const xc = xOf(curBeat);
+  cx.strokeStyle = "rgba(255,255,255,.55)"; cx.lineWidth = 1.5;
+  cx.beginPath(); cx.moveTo(xc,0); cx.lineTo(xc,h); cx.stroke();
+}
+
+/* ============ UI 绑定 ============ */
+document.querySelectorAll("[data-demo]").forEach(b => {
+  b.onclick = () => {
+    const sc = JSON.parse(JSON.stringify(DEMOS[b.dataset.demo]));
+    loadScore(sc);
+    $("scoreText").value = scoreToText(sc);
+    fitCanvas(); drawRoll();
+  };
+});
+$("btnPickFile").onclick = () => $("fileInput").click();
+$("fileInput").onchange = async (e) => {
+  const f = e.target.files[0];
+  if(!f) return;
+  $("scoreInfo").innerHTML = '<span class="hint">解析中…</span>';
+  try{
+    const sc = await readScoreFile(f);
+    loadScore(sc);
+    $("scoreText").value = scoreToText(sc);
+    fitCanvas(); drawRoll();
+    const isMxl = /\.(mxl|zip)$/i.test(f.name);
+    $("scoreInfo").innerHTML = '<span class="ok">' + (isMxl ? "MXL 解压导入成功" : "MusicXML 导入成功") +
+      '</span> · ' + esc(sc.title) + ' · ' + sc.parts.length + ' 声部 · ' + sc.bpm + ' BPM';
+  }catch(err){
+    $("scoreInfo").innerHTML = '<span class="bad">导入失败：' + esc(err.message) + '</span>';
+  }
+  e.target.value = "";                       // 允许重复选同一个文件
+};
+$("btnLoad").onclick = () => {
+  try{
+    const sc = parseTextScore($("scoreText").value);
+    loadScore(sc);
+    fitCanvas(); drawRoll();
+  }catch(err){ $("scoreInfo").innerHTML = '<span class="bad">' + esc(err.message) + '</span>'; }
+};
+$("btnStart").onclick = () => { if(S.running) stop(); else start(); };
+
+$("cueMode").onchange = (e) => {
+  S.settings.mode = e.target.value;
+  if(S.cue) S.cue.stopSustain();
+};
+$("vCue").oninput = (e) => {
+  S.settings.vol = e.target.value/100;
+  $("vCueVal").textContent = e.target.value + "%";
+  if(S.cue){ S.cue.setVolume(S.settings.vol); S.cue.stopSustain(); }
+};
+$("octShift").oninput = (e) => {
+  S.settings.oct = parseInt(e.target.value,10);
+  $("octVal").textContent = ["低八度","同度","高八度"][S.settings.oct+1];
+  if(S.cue) S.cue.stopSustain();
+};
+$("thresh").oninput = (e) => {
+  S.settings.thresh = parseInt(e.target.value,10);
+  $("thVal").textContent = e.target.value + " 音分";
+};
+$("advance").oninput = (e) => {
+  S.settings.advance = parseInt(e.target.value,10);
+  $("advVal").textContent = e.target.value + " ms";
+};
+function toggle(id, key, label, defOn){
+  const paint = () => {
+    $(id).textContent = label + "：" + (S.settings[key] ? "开" : "关");
+    $(id).className = S.settings[key] ? "on" : "";
+  };
+  $(id).onclick = () => {
+    S.settings[key] = !S.settings[key];
+    paint();
+    if(key === "metro") S.metroLastBeat = -1;
+  };
+  paint();
+}
+toggle("btnMetro","metro","节拍器", false);
+toggle("btnNext","nextCue","下一音预告", true);
+$("btnDo").onclick = () => {
+  S.settings.solf = !S.settings.solf;
+  $("btnDo").textContent = "唱名显示：" + (S.settings.solf ? "唱名" : "音名");
+  $("btnDo").className = S.settings.solf ? "on" : "";
+};
+
+/* 初始化 */
+fitCanvas();
+loadScore(JSON.parse(JSON.stringify(DEMOS.demo2)));
+$("scoreText").value = scoreToText(S.score);
+drawRoll();
+</script>
+</body>
+</html>
