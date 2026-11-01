@@ -8,6 +8,19 @@ import { extractPartGeometry, extractStaffRows } from '@/lib/scoreGeometry'
 // OSMD 是按容器宽度决定排几行的，所以给它一个足够宽的容器即可单行；
 // 它的 Endless 模式指的是"纵向无限高"，不是无限宽，用错了一样会换行。
 
+// 排版单位 → 屏幕像素。
+//
+// OSMD 的 AbsolutePosition 是「tenths」：1 个排版单位 = 0.1 个谱表间距。
+// UnitToPixel 是「一个排版单位多少像素」，zoom 再乘一次。
+// 谱表本身高 4 个间距 = 4 个排版单位，中线在顶线下方 2 个排版单位。
+//
+// 以前这个乘法在五处各写一遍，其中四处把 UnitToPixel 写死成 10。
+// 一旦 OSMD 改默认值，声部标签和叠加层就会和谱面错位，所以收成一个函数。
+function unitPxOf(osmd) {
+  if (!osmd) return 10
+  return (osmd.UnitToPixel || 10) * (osmd.zoom || 1)
+}
+
 // 遍历一次光标，记下每一步的起始拍，之后就能按"拍"直接定位
 function buildIndex(osmd) {
   const idx = []
@@ -59,14 +72,21 @@ function zoomFor(parts) {
 }
 
 // 单行要排多宽：先按小节数估一个足够宽的值，渲染完再按实际谱宽收紧，
-// 免得右边留一大片空白
+// 免得右边留一大片空白。
+//
+// 估窄了 OSMD 会自动换行（谱面纵向叠成多行），所以宁可估宽一点：
+// 渲染完 tightenWidth 会把容器收到实际内容宽度，估宽没有副作用。
+// 但也不能太宽——OSMD 排版耗时随宽度线性上涨，估成十几万像素会直接卡死。
 function estimateWidth(xml) {
   const mAll = (xml.match(/<measure\s/g) || []).length
   const parts = partCount(xml)
   const measures = Math.max(1, Math.round(mAll / parts))
-  // 宽度按缩放线性放大：OSMD 会把给定宽度均分给各小节，
-  // 用 zoom/0.75 这种非线性系数会让手机上一屏连一小节都放不下
-  return Math.round(measures * 260 * zoomFor(parts) + 80)
+  const noteCount = (xml.match(/<note[\s>]/g) || []).length
+  // 音符密的谱每小节要更多横向空间。基础 300px，每个音补 5px，
+  // 上限 900px：实测 7 声部 79 小节 2887 音（每小节约 37 音）需要
+  // 约 490px/小节，正好落在 300 + 37×5 = 485。
+  const perMeasure = Math.min(900, 300 + (noteCount / measures) * 5)
+  return Math.round(measures * perMeasure * zoomFor(parts) + 80)
 }
 
 // 声部数分级只解决"大概多高"，真到 6/8 声部或矮屏幕上，谱面仍会高过
@@ -86,6 +106,45 @@ function fitToHeight(osmd, box, wrap, base) {
   return z
 }
 
+// 确认谱面没有被排成多行。
+//
+// OSMD 按容器宽度决定换行。横向卷轴模式要求"整首排成一行"：宽度估窄了
+// 它会自动换行，谱面纵向叠成多行，横向卷轴就失去意义了。
+//
+// 判据：同一组小节在所有 system 里的 y 应该一致（单行时每个 system 的
+// y 范围相同）。这里只在真的检测到换行时打一条警告——不做自动加宽，
+// 因为加宽会让 OSMD 重新排版，耗时随宽度线性上涨（实测 13 万像素直接超时），
+// 而正常谱面用 estimateWidth 估出来的宽度是够的。
+//
+// 如果以后真遇到换行，正确做法是调 estimateWidth 的系数，不是在这里补救。
+function assertSingleLine(osmd) {
+  const ml = (osmd.GraphicSheet && osmd.GraphicSheet.MeasureList) || []
+  if (!ml.length) return true
+  const rangeOf = (line) => {
+    let lo = Infinity, hi = -Infinity
+    for (const gm of line || []) {
+      const se = gm && gm.staffEntries && gm.staffEntries[0]
+      const ps = se && se.PositionAndShape
+      const y = ps && ps.AbsolutePosition ? ps.AbsolutePosition.y : null
+      if (y == null) continue
+      if (y < lo) lo = y
+      if (y > hi) hi = y
+    }
+    return { lo, hi }
+  }
+  const first = rangeOf(ml[0])
+  for (let i = 1; i < ml.length; i++) {
+    const r = rangeOf(ml[i])
+    // 单行时每个 system 的纵向范围完全相同（都是同一组谱表）。
+    // 差超过 2 个排版单位说明被排到了别的行。
+    if (Math.abs(r.lo - first.lo) > 2) {
+      console.warn('[ScoreView] 谱面被排成了多行，estimateWidth 估窄了：', i, r.lo, first.lo)
+      return false
+    }
+  }
+  return true
+}
+
 const ScoreView = forwardRef(function ScoreView({ xml, theme, myPart, parts = [], onPart, startBeat = 0, onTap, onSeek }, ref) {
   const wrapRef = useRef(null)      // 横向滚动的外壳
   const boxRef = useRef(null)       // OSMD 渲染的容器（超宽）
@@ -102,6 +161,13 @@ const ScoreView = forwardRef(function ScoreView({ xml, theme, myPart, parts = []
   const grabRef = useRef(0)
   const downRef = useRef(null)
   const tapMapRef = useRef([])      // [{x, beat}]，点谱面定位用
+  const beatMapRef = useRef(null)   // [{beat, x}]，播放时按拍插值定位滚动
+  const selfScrollRef = useRef(-1)  // 上一次由我们写入的 scrollLeft，用来忽略自己触发的 scroll 事件
+  // 这几个缓存要在这里声明：下面几个 effect 里会用到，
+  // 放到后面的函数旁边会在首次 render 时命中 TDZ
+  const contentWRef = useRef(0)     // 谱面内容宽度缓存，重新排版时置 0
+  const contentLeftRef = useRef(0)  // SVG 左缘在滚动内容里的横坐标
+  const contentTopRef = useRef(0)   // SVG 上缘在滚动内容里的纵坐标
   const seekRef = useRef(onSeek)
   seekRef.current = onSeek
   const [ready, setReady] = useState(false)
@@ -121,16 +187,42 @@ const ScoreView = forwardRef(function ScoreView({ xml, theme, myPart, parts = []
     tapMapRef.current = ((geoRef.current && geoRef.current.notes) || [])
       .filter((n) => n.beat != null)
       .map((n) => ({ x: n.x, beat: n.beat }))
+    buildBeatMap()
+  }
+
+  // 播放时滚动要按「拍」连续推进，不能只在换音那一刻跳一格。
+  //
+  // beatMap 是 (拍 → 谱面横坐标) 的分段线性表：只取每个音的起始拍，
+  // 中间的空白（长音、休止）由两侧端点插值补满。OSMD 排版里音与音的
+  // 间距本来就不等（长音占位宽、休止符窄），直接按「拍 × 平均宽度」
+  // 算会和音符对不上，所以必须用真实坐标插值。
+  //
+  // 同一拍上可能有多个音（和弦），取最左边那个——滚动参考点应当落在
+  // 这一拍的第一个音上，不然和弦的后续音会把光标往前拽。
+  function buildBeatMap() {
+    const notes = (geoRef.current && geoRef.current.notes) || []
+    const pts = []
+    for (const n of notes) {
+      if (n.beat == null) continue
+      const last = pts[pts.length - 1]
+      if (last && Math.abs(last.beat - n.beat) < 1e-6) continue
+      if (last && n.beat < last.beat) continue
+      pts.push({ beat: n.beat, x: n.x })
+    }
+    beatMapRef.current = pts.length >= 2 ? pts : null
   }
 
   // 每个声部那一行五线谱在屏幕上的纵向位置，用来把声部名贴在谱线左侧。
   //
-  // 做法：量 SVG 里**够长的**水平线，每 5 条一组 = 一行五线谱，取首尾中点。
+  // 用 OSMD 的 staffEntries 直接定位，不去数 SVG 里的横线。
   //
-  // 宽度阈值很关键：谱面里还有大量短横笔（拍号的 4/4、加线、符杠），
-  // 实测 212 条水平线里只有 160 条够长，其中真正的谱线是 20 条
-  // （4 行 × 5 条）。不加宽度过滤时，短笔混进来会把「每 5 条一组」
-  // 整体错位——表现就是 S/A 大致对准、T/B 落到相邻谱表上。
+  // 为什么不能用"数长横线、每 5 条一组"：谱面里除了谱线还有符杠（beam）、
+  // 加线、连谱号括号，它们也是长横条，getBBox 分不出来。7 声部的谱实测
+  // 数出 8 组，之后每 5 条一组的切分整体错位——表现就是左边的声部名
+  // 和实际谱表对不上（S1 标到 S2 的位置、B2 落到谱外）。
+  //
+  // staffEntries 的顺序就是声部从上到下的顺序，y 是排版单位，
+  // 乘上 UnitToPixel 就是屏幕像素，不需要任何猜测。
   function measureStaffRows() {
     const osmd = osmdRef.current
     const box = boxRef.current
@@ -143,34 +235,13 @@ const ScoreView = forwardRef(function ScoreView({ xml, theme, myPart, parts = []
 
     const sr = svg.getBoundingClientRect()
     const wrapRect = wrap.getBoundingClientRect()
-    const vb = svg.viewBox && svg.viewBox.baseVal ? svg.viewBox.baseVal : null
-    const scale = vb && vb.height ? sr.height / vb.height : 1
 
-    // 只取长线：谱线横跨整个小节（100+ 单位），短横笔都在 50 以内
-    const ys = []
-    for (const p of svg.querySelectorAll('path')) {
-      let bb
-      try { bb = p.getBBox() } catch (e) { continue }
-      if (!bb || bb.height >= 2 || bb.width < 100) continue
-      ys.push(Math.round((sr.top + (bb.y - (vb ? vb.y : 0)) * scale) * 10) / 10)
-    }
-    const uniq = [...new Set(ys)].sort((a, b) => a - b)
-
-    if (uniq.length >= rows.length * 5) {
-      const lines = []
-      for (let i = 0; i + 4 < uniq.length; i += 5) {
-        const g = uniq.slice(i, i + 5)
-        lines.push((g[0] + g[4]) / 2)
-      }
-      setStaffRows(rows.map((r, i) => ({
-        partIndex: r.partIndex,
-        top: (lines[i] != null ? lines[i] : 0) - wrapRect.top,
-      })))
-      return
-    }
-
-    // 兜底：按 OSMD 的 y 换算（线距 1 排版单位）
-    const unit = (osmd.UnitToPixel || 10) * (osmd.zoom || 1)
+    // 排版单位 → 屏幕像素。
+    //
+    // OSMD 的 AbsolutePosition 是「tenths」：1 个排版单位 = 0.1 个谱表间距。
+    // UnitToPixel 是「一个排版单位多少像素」，zoom 再乘一次。
+    // 谱表本身高 4 个间距 = 4 个排版单位，中线在顶线下方 2 个排版单位。
+    const unit = unitPxOf(osmd)
     const svgTop = sr.top - wrapRect.top + wrap.scrollTop
     setStaffRows(rows.map((r) => ({
       partIndex: r.partIndex,
@@ -194,6 +265,9 @@ const ScoreView = forwardRef(function ScoreView({ xml, theme, myPart, parts = []
     // 换谱 / 换 XML 后 SVG 是新的，画布布局缓存必须失效
     const cv0 = canvasRef.current
     if (cv0) cv0.__layoutKey = ''
+    // 谱宽也变了，缓存的内容宽度作废
+    contentWRef.current = 0
+    beatMapRef.current = null
     setReady(false)
     setErr(null)
 
@@ -217,11 +291,14 @@ const ScoreView = forwardRef(function ScoreView({ xml, theme, myPart, parts = []
         applyTheme(osmd, themeRef.current !== 'light')
         osmd.zoom = fitToHeight(osmd, box, wrapRef.current, zoomFor(partCount(xml)))
         zoomRef.current = osmd.zoom
+        // 确认谱面是一整行（宽度估窄时 OSMD 会自动换行）
+        assertSingleLine(osmd)
         indexRef.current = buildIndex(osmd)
         stepRef.current = 0
         osmd.cursor.show()
         rebuildGeo()
         tightenWidth()
+        measureContent()
         layoutCanvas()
         measureStaffRows()
         // 从别的页面回来时引擎位置还在，光标也要跟过去，不能从第 0 拍重新显示
@@ -246,6 +323,32 @@ const ScoreView = forwardRef(function ScoreView({ xml, theme, myPart, parts = []
     return () => { dead = true }
   }, [xml])
 
+  // 容器尺寸变了（横竖屏切换、分屏、软键盘收起）要重新贴声部标签。
+  // 谱面的纵向排版是按容器高度缩放的，高度一变，每行谱表的位置全变，
+  // 不重新量的话标签会整体偏离谱表。
+  useEffect(() => {
+    if (!ready) return
+    const wrap = wrapRef.current
+    if (!wrap || typeof ResizeObserver === 'undefined') return
+    let lastH = wrap.clientHeight
+    let lastW = wrap.clientWidth
+    const ro = new ResizeObserver(() => {
+      const h = wrap.clientHeight
+      const w = wrap.clientWidth
+      if (h === lastH && w === lastW) return
+      lastH = h
+      lastW = w
+      // 尺寸变化会让 SVG 重排，等一帧再量
+      requestAnimationFrame(() => {
+        contentWRef.current = 0
+        measureContent()
+        measureStaffRows()
+      })
+    })
+    ro.observe(wrap)
+    return () => ro.disconnect()
+  }, [ready])
+
   // 切声部要重建叠加层和点击定位的坐标
   useEffect(() => {
     if (partRef.current === myPart) return
@@ -255,6 +358,8 @@ const ScoreView = forwardRef(function ScoreView({ xml, theme, myPart, parts = []
     rebuildGeo()
     const cv = canvasRef.current
     if (cv) cv.__layoutKey = ''
+    contentWRef.current = 0
+    measureContent()
     layoutCanvas()
   }, [myPart, ready])
 
@@ -274,7 +379,12 @@ const ScoreView = forwardRef(function ScoreView({ xml, theme, myPart, parts = []
     tightenWidth()
     const cv = canvasRef.current
     if (cv) cv.__layoutKey = ''
+    contentWRef.current = 0
+    measureContent()
     layoutCanvas()
+    // 主题切换会重新 render，谱表的纵向位置跟着变（zoom 可能不同），
+    // 声部标签要重新贴一次，否则还停在旧位置
+    measureStaffRows()
     const idx = indexRef.current
     if (idx.length) {
       let target = 0
@@ -287,6 +397,11 @@ const ScoreView = forwardRef(function ScoreView({ xml, theme, myPart, parts = []
 
   // 谱子实际占多宽（排版单位 → 像素）。
   // SVG 的宽度等于我们给的容器宽度，不是内容宽度，直接拿会留一大片空白。
+  //
+  // 结果缓存起来：这个方法要遍历整份排版（每小节 × 每个声部），
+  // 40 小节的众赞歌一次就是几百次读属性。播放时滚动每帧都在动，
+  // 原来的缓存判定每帧都会失效，不缓存就会每帧重算一遍。
+  // 只有重新排版（换谱 / 换主题 / 换缩放）才会变，那时置 0 让它重算。
   function contentWidth(osmd) {
     const ml = (osmd && osmd.GraphicSheet && osmd.GraphicSheet.MeasureList) || []
     let far = 0
@@ -300,7 +415,12 @@ const ScoreView = forwardRef(function ScoreView({ xml, theme, myPart, parts = []
       }
     }
     if (!far) return 0
-    return far * 10 * (osmd.zoom || 1)
+    return far * unitPxOf(osmd)
+  }
+
+  function contentWidthCached() {
+    if (!contentWRef.current) contentWRef.current = contentWidth(osmdRef.current)
+    return contentWRef.current
   }
 
   // 排完后把容器收到实际谱宽，右边不多留空白。
@@ -312,7 +432,7 @@ const ScoreView = forwardRef(function ScoreView({ xml, theme, myPart, parts = []
     const osmd = osmdRef.current
     const map = tapMapRef.current
     if (!box || !osmd || !map.length || !seekRef.current) return false
-    const unitPx = 10 * (osmd.zoom || 1)
+    const unitPx = unitPxOf(osmd)
     const rect = box.getBoundingClientRect()
     const x = (clientX - rect.left) / unitPx
     let best = map[0]
@@ -329,7 +449,7 @@ const ScoreView = forwardRef(function ScoreView({ xml, theme, myPart, parts = []
     const box = boxRef.current
     const osmd = osmdRef.current
     if (!box || !osmd) return
-    const w = contentWidth(osmd)
+    const w = contentWidthCached()
     if (w > 0) {
       box.style.width = Math.ceil(w) + 24 + 'px'
       box.style.overflow = 'hidden'
@@ -341,6 +461,25 @@ const ScoreView = forwardRef(function ScoreView({ xml, theme, myPart, parts = []
   // 位图上限，浏览器把整张画布缩放着画，叠加层就和音符整体错位。
   // 所以长谱只给视口一屏画布（originX 记下它对应内容的哪一段），
   // 滚动时重排 + 重画；短谱仍然一次铺满整首。
+  //
+  // 量一次 SVG 在滚动内容里的位置。
+  //
+  // 只能在这里读 getBoundingClientRect：谱面是垂直居中的，SVG 相对容器
+  // 会有一个偏移（4 声部时约 29px），必须用 rect 差值算。
+  // 但滚动时 SVG 和容器一起移动、相对距离不变，所以量一次就够。
+  // 播放时每帧滚动，若每帧都读 rect，浏览器每次都要重排一遍，
+  // 这正是之前滚动掉帧的一个来源。
+  function measureContent() {
+    const box = boxRef.current
+    const wrap = wrapRef.current
+    const svg = box && box.querySelector('svg')
+    if (!svg || !wrap) return
+    const wr = wrap.getBoundingClientRect()
+    const sr = svg.getBoundingClientRect()
+    contentLeftRef.current = sr.left - wr.left + wrap.scrollLeft
+    contentTopRef.current = sr.top - wr.top + wrap.scrollTop
+  }
+
   function layoutCanvas() {
     const box = boxRef.current
     const cv = canvasRef.current
@@ -348,22 +487,13 @@ const ScoreView = forwardRef(function ScoreView({ xml, theme, myPart, parts = []
     const svg = box && box.querySelector('svg')
     if (!cv || !svg || !wrap) return
     const dpr = window.devicePixelRatio || 1
-    // 跟着唱时 syncTo 每帧都会走到这里。先用便宜的几何量做一次缓存判断，
-    // 位置没变就不重算 contentWidth（它要遍历整份排版，40 小节的众赞歌很贵）。
-    const wr = wrap.getBoundingClientRect()
-    const sr = svg.getBoundingClientRect()
-    const layoutKey = [wrap.scrollLeft, wrap.clientWidth, wr.left, wr.top, sr.left, sr.top, sr.width, sr.height, dpr].join('|')
-    if (cv.__layoutKey === layoutKey) return
-    cv.__layoutKey = layoutKey
-    // 画布按内容宽度来，不是按 SVG 宽度（后者等于容器宽度，会大一截）
-    const w = contentWidth(osmdRef.current) || parseFloat(svg.getAttribute('width') || 0)
+    const w = contentWidthCached() || parseFloat(svg.getAttribute('width') || 0)
     const h = parseFloat(svg.getAttribute('height') || svg.clientHeight || 0)
     if (!w || !h) return
-    // SVG 元素没有 offsetLeft/offsetTop（拿到的 undefined 会写成非法 CSS，
-    // 画布就停在滚动容器的 0,0）。谱面又是垂直居中的，4 声部时会错开约 29px，
-    // 所以必须用 rect 差值算，并补上横向滚动量。
-    const svgLeft = sr.left - wr.left + wrap.scrollLeft
-    const svgTop = sr.top - wr.top + wrap.scrollTop
+
+    // 画布按内容宽度来，不是按 SVG 宽度（后者等于容器宽度，会大一截）
+    const svgLeft = contentLeftRef.current
+    const svgTop = contentTopRef.current
     const maxCss = 8000 / dpr
     let left = svgLeft
     let cssW = w
@@ -374,10 +504,13 @@ const ScoreView = forwardRef(function ScoreView({ xml, theme, myPart, parts = []
       left = svgLeft + originX
       cssW = Math.min(vw, w)
     }
-    cv.style.left = Math.round(left) + 'px'
-    cv.style.top = Math.round(svgTop) + 'px'
-    cv.style.width = cssW + 'px'
-    cv.style.height = h + 'px'
+    // 只在真的变了才写 style：每帧都写会触发样式重算
+    const leftCss = Math.round(left)
+    if (cv.__leftCss !== leftCss) { cv.__leftCss = leftCss; cv.style.left = leftCss + 'px' }
+    const topCss = Math.round(svgTop)
+    if (cv.__topCss !== topCss) { cv.__topCss = topCss; cv.style.top = topCss + 'px' }
+    if (cv.__cssW !== cssW) { cv.__cssW = cssW; cv.style.width = cssW + 'px' }
+    if (cv.__cssH !== h) { cv.__cssH = h; cv.style.height = h + 'px' }
     const bw = Math.round(cssW * dpr)
     const bh = Math.round(h * dpr)
     // 只有尺寸变了才重设位图，否则每帧都会清空画布、闪烁
@@ -406,7 +539,7 @@ const ScoreView = forwardRef(function ScoreView({ xml, theme, myPart, parts = []
 
     const notes = geo.notes
     if (!notes.length) return
-    const unitPx = 10 * (osmd.zoom || 1)
+    const unitPx = unitPxOf(osmd)
 
     // 渲染出来的音符个数和谱面音符个数一般一致；跨小节长音会被拆开，
     // 那时退化为按比例对位，至少不会画到界外
@@ -424,9 +557,9 @@ const ScoreView = forwardRef(function ScoreView({ xml, theme, myPart, parts = []
     const xStart = (i) => notes[i].x * unitPx - originX
     const xEnd = (i) => (i + 1 < notes.length ? notes[i + 1].x : notes[i].x + 4) * unitPx - originX
     const maxOff = MAX_OFF_STEPS * 0.5 * unitPx
-    const offsetOf = (cs) => {
-      if (cs == null) return 0
-      let off = (cs / 100) * 0.25 * unitPx * CURVE_GAIN
+    const offsetOf = (cents) => {
+      if (cents == null) return 0
+      let off = (cents / 100) * 0.25 * unitPx * CURVE_GAIN
       if (off > maxOff) off = maxOff
       if (off < -maxOff) off = -maxOff
       return off
@@ -440,9 +573,9 @@ const ScoreView = forwardRef(function ScoreView({ xml, theme, myPart, parts = []
     // 每个音唱下来平均偏差多少，用来给历史条上色
     const avg = new Map()
     for (const t of data.trace || []) {
-      if (t.cs == null) continue
+      if (t.cents == null) continue
       const e = avg.get(t.pos) || { s: 0, n: 0 }
-      e.s += t.cs; e.n++
+      e.s += t.cents; e.n++
       avg.set(t.pos, e)
     }
 
@@ -496,7 +629,7 @@ const ScoreView = forwardRef(function ScoreView({ xml, theme, myPart, parts = []
     }
 
     // ---- 音高曲线：从头到尾连续，不被音符切断 ----
-    const pts = (data.trace || []).filter((t) => t.midi != null && t.c >= 0.45)
+    const pts = (data.trace || []).filter((t) => t.midi != null && t.clarity >= 0.45)
     let lastY = null
     if (pts.length < 2) {
       // 刚开口还没形成曲线，也把诊断信息留下，测试脚本靠它判断叠加层是否在工作
@@ -518,7 +651,7 @@ const ScoreView = forwardRef(function ScoreView({ xml, theme, myPart, parts = []
       const p = mapPos(t.pos)
       const x = xStart(p) + frac * (xEnd(p) - xStart(p))
       if (!inView(x) && !started) continue
-      const y = notes[p].y * unitPx - offsetOf(t.cs)
+      const y = notes[p].y * unitPx - offsetOf(t.cents)
       lastY = y
       if (!started) { cx.moveTo(x, y); started = true }
       else cx.lineTo(x, y)
@@ -527,13 +660,61 @@ const ScoreView = forwardRef(function ScoreView({ xml, theme, myPart, parts = []
     cv.__dbg = { posIdx, notesLen: notes.length, lastCurveY: lastY, curBarY: notes[posIdx].y * unitPx }
   }
 
-  // 横向跟随：让光标停在屏幕偏左的位置，右边留出"接下来要唱的"。
+  // 横向跟随：让当前音停在屏幕偏左，右边留出"接下来要唱的"。
   // 用户正在手动拖谱面时不抢滚动（手指按下的 2.5 秒内都算）。
   const grabbed = () => grabRef.current && Date.now() - grabRef.current < 2500
 
-  // 目标位置每次都要重算（光标元素会变），但「够近就不动」的判定要留余量：
-  // 阈值太小会让滚动器每换一个音就重新起步，看起来一顿一顿的。
-  // 40px 大约是半个小节的宽度，比这小的位移肉眼几乎看不出。
+  // 光标锚点：光标放在 70% 处，当前小节从左边完整露出来，不会一滚动就把谱号切掉
+  const ANCHOR = 0.7
+
+  // 由「拍」算出谱面内容坐标。beatMap 是真实音符排版位置的分段线性插值，
+  // 所以长音会按它在谱面上实际占的宽度匀速推进，而不是按拍均速。
+  const xAtBeat = (beat) => {
+    const pts = beatMapRef.current
+    if (!pts) return null
+    const n = pts.length
+    if (beat <= pts[0].beat) return pts[0].x
+    if (beat >= pts[n - 1].beat) return pts[n - 1].x
+    // 二分找到所在区段；播放时每帧调用，不能线性扫
+    let lo = 0
+    let hi = n - 1
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1
+      if (pts[mid].beat <= beat) lo = mid
+      else hi = mid
+    }
+    const a = pts[lo]
+    const b = pts[hi]
+    const span = b.beat - a.beat
+    if (span <= 1e-9) return b.x
+    return a.x + ((beat - a.beat) / span) * (b.x - a.x)
+  }
+
+  // 播放时的逐帧滚动：按当前拍直接算出应有的 scrollLeft 并写进去。
+  //
+  // 为什么不用 scrollTo({behavior:'smooth'})：
+  // 平滑滚动是浏览器自己的动画，每个新的滚动请求都会顶掉上一次。
+  // 之前只在「换音」那一帧调一次，于是滚动走十几帧就停住，等下一个音
+  // 再猛地跳一截——实测 20 秒里 84% 的帧 scrollLeft 完全不动，
+  // 其余帧一次跳 25~51px，肉眼就是「一顿一顿」。
+  // 改成每帧按拍算目标位置（位置本身随拍连续），滚动就是匀速连续的。
+  const scrollToBeat = (beat) => {
+    const wrap = wrapRef.current
+    const osmd = osmdRef.current
+    if (!wrap || !osmd || grabbed()) return
+    const x = xAtBeat(beat)
+    if (x == null) return
+    const unitPx = unitPxOf(osmd)
+    const target = Math.max(0, contentLeftRef.current + x * unitPx - wrap.clientWidth * ANCHOR)
+    // 阈值取 0.25px：高刷屏一帧只推进 0.6px，门槛设高了会被整段吞掉，
+    // 又退回「攒几帧跳一次」。scrollLeft 支持小数，不必自己取整。
+    if (Math.abs(target - wrap.scrollLeft) < 0.25) return
+    selfScrollRef.current = target
+    wrap.scrollLeft = target
+  }
+
+  // 非播放场景（点谱面定位、切声部、换主题）用的定点跳转：
+  // 光标是 OSMD 自己维护的 DOM，位置只能从它身上量。
   const scrollToCursor = (smooth) => {
     const wrap = wrapRef.current
     const osmd = osmdRef.current
@@ -543,39 +724,75 @@ const ScoreView = forwardRef(function ScoreView({ xml, theme, myPart, parts = []
     const r = el.getBoundingClientRect()
     const br = wrap.getBoundingClientRect()
     const x = r.left - br.left + wrap.scrollLeft
-    // 光标放在 70% 处：当前小节从左边完整露出来，不会一滚动就把谱号切掉
-    const target = Math.max(0, x - wrap.clientWidth * 0.7)
+    const target = Math.max(0, x - wrap.clientWidth * ANCHOR)
+    // 阈值只用于「非播放」的定点跳转：位移小于半小节的没必要动，
+    // 免得切声部这种小变化把谱面推来推去
     if (Math.abs(target - wrap.scrollLeft) < 40) return
+    selfScrollRef.current = Math.round(target)
     wrap.scrollTo({ left: target, behavior: smooth ? 'smooth' : 'auto' })
+  }
+
+  // 把 OSMD 光标推进到第 target 步（光标本身只按音走，不跟拍连续移动）
+  function stepCursorTo(osmd, target) {
+    const c = osmd.cursor
+    if (target < stepRef.current) {
+      try { c.reset() } catch (e) {}
+      stepRef.current = 0
+    }
+    let guard = 0
+    while (stepRef.current < target && guard++ < 8000) {
+      c.next()
+      stepRef.current++
+    }
+    try { c.update?.() } catch (e) {}
+  }
+
+  // 拍 → 光标步号。播放时每帧都要算，用二分而不是线性扫：
+  // 40 小节的谱有上千步，线性扫每帧就是上千次比较。
+  function cursorStepAt(beat) {
+    const idx = indexRef.current
+    let lo = 0
+    let hi = idx.length - 1
+    if (beat <= idx[0] + 1e-6) return 0
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1
+      if (idx[mid] <= beat + 1e-6) lo = mid
+      else hi = mid - 1
+    }
+    return lo
   }
 
   useImperativeHandle(ref, () => ({
     // beat：我这个声部当前音符的起始拍；live：叠加层要用的实时数据
-    // smooth：播放时不走平滑滚动，动画会每帧打断上一次，反而抖
-    syncTo(beat, live, smooth = true) {
+    // smooth：非播放场景是否用平滑滚动
+    // scrollBeat：用于滚动的连续拍位置。跟唱时 beat 是按音离散的
+    //   （只在换音时跳一格），拿它滚动会一顿一顿；调用方把连续的
+    //   teamBeat 传进来，滚动就能按拍连续推进。
+    syncTo(beat, live, smooth = true, scrollBeat) {
       const osmd = osmdRef.current
       const idx = indexRef.current
       if (!osmd || !idx.length) return
       lastBeatRef.current = beat
-      let target = 0
-      for (let i = 0; i < idx.length; i++) {
-        if (idx[i] <= beat + 1e-6) target = i
-        else break
-      }
-      const c = osmd.cursor
-      if (target < stepRef.current) {
-        try { c.reset() } catch (e) {}
-        stepRef.current = 0
-      }
-      let guard = 0
-      while (stepRef.current < target && guard++ < 8000) {
-        c.next()
-        stepRef.current++
-      }
-      try { c.update?.() } catch (e) {}
-      scrollToCursor(smooth)
+      stepCursorTo(osmd, cursorStepAt(beat))
+      if (scrollBeat != null && beatMapRef.current) scrollToBeat(scrollBeat)
+      else scrollToCursor(smooth)
       if (live) drawOverlay(live)
     },
+
+    // 播放专用：每帧调用，按拍连续滚动。
+    // 和 syncTo 分开是因为播放时不需要每帧推进 OSMD 光标：
+    // 光标只在换音时更新，滚动则由拍位置直接决定，两者解耦。
+    tick(beat, live) {
+      const osmd = osmdRef.current
+      const idx = indexRef.current
+      if (!osmd || !idx.length) return
+      lastBeatRef.current = beat
+      const target = cursorStepAt(beat)
+      if (target !== stepRef.current) stepCursorTo(osmd, target)
+      scrollToBeat(beat)
+      if (live) drawOverlay(live)
+    },
+
     // 停止跟唱：清叠加层，但光标和滚动位置留在原地。
     // 早先这里顺手 cursor.reset() + 滚回 0，结果停止后屏幕跳回第一拍、
     // 引擎却停在原来的拍子上，再按麦克风就从看不见的地方接着唱。
@@ -652,6 +869,9 @@ const ScoreView = forwardRef(function ScoreView({ xml, theme, myPart, parts = []
       }}
       onPointerCancel={() => { grabRef.current = 0; downRef.current = null }}
       onScroll={() => {
+        // 播放时每帧都在滚，这次 scroll 事件就是自己触发的。
+        // 画布是空的（播放不画叠加层），没必要再跑一遍布局。
+        if (Math.abs(wrapRef.current.scrollLeft - selfScrollRef.current) < 1.5) return
         // 没在跟唱/播放时画布是空的，不用跟着滚动重排
         if (!ready) return
         if (!liveRef.current) {

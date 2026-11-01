@@ -456,6 +456,9 @@ export default function App() {
       const el = partDotRefs.current[i]
       if (el) el.style.opacity = pa[i].active ? '1' : '0.2'
     }
+    // 滚动用外推出的连续位置：分析是 30fps 的，直接把每 33ms 跳一格的
+    // teamBeat 交给滚动，画面会有 80% 的帧停着不动（实测）。
+    // 判定和提示音仍然用 f.teamBeat/f.beatNow，这里只影响卷轴。
     scoreRef.current?.syncTo(f.beatNow, {
       pos: f.pos,
       total: f.total,
@@ -463,7 +466,7 @@ export default function App() {
       cents: f.cents,
       trace: eng.trace,
       timing: timingRef.current,
-    })
+    }, true, eng.smoothBeat ? eng.smoothBeat() : f.teamBeat)
   }, [])
 
   const addTake = useCallback((t) => setTakes((prev) => [
@@ -689,15 +692,14 @@ export default function App() {
       const pos = eng.posAtBeat(beat)
       // 引擎的位置跟着播放走：停止后按麦克风就能从这一拍接着唱
       eng.teamBeat = beat
-      // 音符气泡只在换音时更新：paintBeat 会写 7 处 DOM，
-      // 每帧调用是之前卡顿的主要来源。
+      // 谱面每帧按拍推进：滚动位置由「拍 → 谱面坐标」直接算出，
+      // 不再等换音时才跳一格。以前只在换音时滚一次，实测播放时
+      // 84% 的帧画面完全不动、其余帧一次跳 25~51px，看着就是一顿一顿。
+      // 气泡文字仍然只在换音时更新（paintBeat 会写 7 处 DOM）。
+      scoreRef.current?.tick?.(beat, null)
       if (pos !== lastPos) {
         lastPos = pos
         lastBeat = beat
-        // 换音时滚一次，用平滑滚动：以前传 false（瞬间跳），
-        // 播放时画面是一格一格蹦过去的，看着就像卡。
-        // 这里本来就是「换音」才调用，不是每帧，不会互相打断。
-        scoreRef.current?.syncTo(beat, null, true)
         paintBeat(beat)
       }
       raf = requestAnimationFrame(tick)

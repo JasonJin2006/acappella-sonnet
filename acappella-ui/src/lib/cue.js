@@ -3,6 +3,7 @@
 // 退回下面这套现场合成的谐波音色。两套走同一个 tone() 接口，调用方不用区分。
 
 import { getLoadedTimbre, loadTimbre, sampleFor } from './samples.js'
+import { freqToMidi } from './pitch.js'
 import { VoicePool } from './voicepool.js'
 
 // 合成音色表。id 与采样音色的 id 对齐（piano/organ/strings/flute/marimba/
@@ -211,17 +212,6 @@ const SAMPLE_FALLBACK = {
   kalimba: 'marimba',
 }
 
-// 兼容旧的无分组列表
-export const TIMBRE_NAMES = TIMBRE_GROUPS.flatMap((g) => g.items)
-
-export function timbreName(id) {
-  return SAMPLE_TIMBRES[id] || (TIMBRES[id] && TIMBRES[id].name) || id
-}
-
-export function timbreGroup(id) {
-  return TIMBRE_GROUPS.find((g) => g.items.some(([k]) => k === id)) || null
-}
-
 class CueEngine {
   constructor(ctx) {
     this.ctx = ctx
@@ -334,15 +324,12 @@ class CueEngine {
     const src = ctx.createBufferSource()
     src.buffer = pick.buffer
     src.playbackRate.value = pick.rate
-    // 延音：从采样 35% 处循环到 85%，跳过起音段，循环点落在稳态
-    if (loaded.sustain > 0) {
-      const start = pick.buffer.duration * 0.35
-      const end = pick.buffer.duration * 0.85
-      if (end - start > 0.08) {
-        src.loop = true
-        src.loopStart = start
-        src.loopEnd = end
-      }
+    // 延音：用加载时算好的相位对齐循环点（见 samples.js 的 findLoopPoints）。
+    // 循环点如果不对齐，每次回跳都有阶跃，听感是持续的电流声。
+    if (loaded.sustain > 0 && pick.loop) {
+      src.loop = true
+      src.loopStart = pick.loop.loopStart
+      src.loopEnd = pick.loop.loopEnd
     }
     // 采样包自带的增益（不同音色响度不同）直接乘进声部总线，
     // 不再为每个音单独建一个 GainNode——省一个节点就是省一次音频线程分配。
@@ -436,7 +423,7 @@ class CueEngine {
 
     // 共振峰随音区移动：低音声部的声道更长，固定 800Hz 会让男低音听起来像捏着嗓子。
     // 每低一个八度整体乘 0.79，每高一个八度乘 1.26，限制在两倍以内。
-    const midi = 69 + 12 * Math.log2(freq / 440)
+    const midi = freqToMidi(freq)
     const scale = Math.max(0.8, Math.min(1.25, Math.pow(2, (midi - 60) / 36)))
 
     let node = chest
@@ -476,14 +463,15 @@ class CueEngine {
         if (!this.pool) this.pool = new VoicePool(ctx, this.master)
         // 采样包自带的响度差乘进峰值
         const peak = Math.max(0.0001, gain * 1.15 * (loaded.gain == null ? 1 : loaded.gain))
-        // 延音类从 35% 处循环到 85%，跳过起音段
+        // 延音用加载时算好的相位对齐循环点（见 samples.js 的 findLoopPoints）。
+        // 不对齐的循环点每次回跳都产生阶跃，是"电流声"的主要来源。
         let loop = false
         let loopStart = 0
         let loopEnd = 0
-        if (loaded.sustain > 0) {
-          const a = pick.buffer.duration * 0.35
-          const b = pick.buffer.duration * 0.85
-          if (b - a > 0.08) { loop = true; loopStart = a; loopEnd = b }
+        if (loaded.sustain > 0 && pick.loop) {
+          loop = true
+          loopStart = pick.loop.loopStart
+          loopEnd = pick.loop.loopEnd
         }
         const voice = this.pool.playSample(pick.buffer, pick.rate, {
           when: t0,
@@ -515,28 +503,112 @@ class CueEngine {
     const attack = Math.min(spec.attack == null ? 0.012 : spec.attack, dur * 0.45)
     const release = Math.min(spec.release == null ? 0.06 : spec.release, dur * 0.55)
 
+    // 起音时刻不能早于"现在"：when 是提前排期的时间点，排期迟到时
+    // （主线程卡顿）会落在过去，setValueAtTime(0.0001, 过去) 会立刻把
+    // 增益从当前值跳到零，是一个满幅阶跃，听感就是"刺啦"。
+    const nowT = ctx.currentTime
+    const tStart = Math.max(t0, nowT + 0.002)
+    const endT = Math.max(end, tStart + 0.01)
+
     const env = ctx.createGain()
     env.connect(dest || this.master)
-    env.gain.setValueAtTime(0.0001, t0)
-    env.gain.linearRampToValueAtTime(peak, t0 + attack)
+    env.gain.setValueAtTime(0.0001, tStart)
+    env.gain.linearRampToValueAtTime(peak, tStart + attack)
 
     if (spec.decay) {
       // 打击类音色：起音后指数衰减，像敲一下
-      const dec = Math.min(Math.max(t0 + 0.08, t0 + spec.decay), end - 0.005)
+      const dec = Math.min(Math.max(tStart + 0.08, tStart + spec.decay), endT - 0.005)
       env.gain.exponentialRampToValueAtTime(Math.max(0.0001, peak * 0.22), dec)
-      env.gain.exponentialRampToValueAtTime(0.0001, Math.max(dec + 0.01, end))
+      env.gain.exponentialRampToValueAtTime(0.0001, Math.max(dec + 0.01, endT))
     } else {
       // 持续类：起音后轻微回落再保持，长音不会像风琴一样死平
-      const settle = Math.min(t0 + attack + Math.max(0.12, dur * 0.25), end - release)
+      const settle = Math.min(tStart + attack + Math.max(0.12, dur * 0.25), endT - release)
       env.gain.linearRampToValueAtTime(peak * 0.88, settle)
-      env.gain.setValueAtTime(peak * 0.88, Math.max(settle, end - release))
-      env.gain.linearRampToValueAtTime(0.0001, end)
+      env.gain.setValueAtTime(peak * 0.88, Math.max(settle, endT - release))
+      env.gain.linearRampToValueAtTime(0.0001, endT)
     }
 
-    const nodes = this._build(freq, spec, t0, env)
-    for (const { o } of nodes) o.stop(end + 0.05)
+    const nodes = this._build(freq, spec, tStart, env)
+    for (const { o } of nodes) o.stop(endT + 0.05)
+    // 合成音色的节点也要回收：一首谱几千个音，每个都留一串振荡器
+    // 挂在图上，播放几分钟后节点数会持续上涨，GC 压力直接体现在音频线程。
+    const lastNode = nodes[nodes.length - 1]
+    if (lastNode && lastNode.o) {
+      lastNode.o.onended = () => {
+        for (const { o } of nodes) { try { o.disconnect() } catch (e) {} }
+        try { env.disconnect() } catch (e) {}
+      }
+    }
     return {
       stop() { for (const { o } of nodes) { try { o.stop() } catch (e) {} } },
+    }
+  }
+
+  // 滑音（glissando / portamento）：一个音在自身时值内从 freqA 连续滑到 freqB。
+  //
+  // 为什么不用采样：采样是靠 playbackRate 变调的，要让它连续滑过去只能
+  // 对 playbackRate 做自动化。技术上可行，但采样在极端变调下共振峰会跟着
+  // 跑（低音滑到高音像变声），而且每换一个采样点音色会跳一下。
+  // 滑音本身要的就是"连续的音高轨迹"，用振荡器合成反而更稳、更连贯，
+  // 所以这里固定走合成通路，不受当前音色影响。
+  //
+  // 返回 false 表示没排上（调用方退回普通音，不要整段静音）。
+  slide(freqA, freqB, durSec, gain, when, dest) {
+    const ctx = this.ctx
+    if (!(freqA > 0) || !(freqB > 0)) return false
+    const dur = Math.max(0.06, durSec)
+    const t0 = (when != null ? when : ctx.currentTime) + 0.001
+    const end = t0 + dur
+    const spec = this._spec()
+
+    const peak = Math.max(0.0001, gain * 1.15)
+    const env = ctx.createGain()
+    env.connect(dest || this.master)
+    const attack = Math.min(0.03, dur * 0.25)
+    const release = Math.min(0.08, dur * 0.3)
+    env.gain.setValueAtTime(0.0001, t0)
+    env.gain.linearRampToValueAtTime(peak, t0 + attack)
+    env.gain.setValueAtTime(peak * 0.9, Math.max(t0 + attack, end - release))
+    env.gain.linearRampToValueAtTime(0.0001, end)
+
+    // 用指数滑而不是线性：音高是频率的对数，线性滑听起来会"先快后慢"。
+    // exponentialRampToValueAtTime 要求两端都 > 0，这里已经保证。
+    const glideEnd = Math.max(t0 + attack + 0.01, end - release)
+    const nodes = []
+
+    // 分音按两端频率的中点定，滑音过程中波形结构保持稳定
+    const partials = (spec.partials || [[1, 1]]).slice(0, 6)
+    const norm = partials.reduce((s, p) => s + p[1], 0) || 1
+    for (const [mult, amp] of partials) {
+      const o = ctx.createOscillator()
+      o.type = spec.type || 'sine'
+      // 起点和终点都按同一个分音倍数缩放，保持音色一致
+      o.frequency.setValueAtTime(freqA * mult, t0)
+      o.frequency.exponentialRampToValueAtTime(freqB * mult, glideEnd)
+      const g = ctx.createGain()
+      g.gain.value = (amp / norm) * (spec.detune ? 0.55 : 1)
+      o.connect(g)
+      g.connect(env)
+      o.start(t0)
+      o.stop(end + 0.05)
+      nodes.push(o)
+      // 增益节点也要回收：一首谱里滑音不多，但不断开的话它们会挂在
+      // env 上直到整次播放结束。离线渲染（导出 WAV）里没有 window，
+      // 所以只用 onended，不挂定时器。
+      o.onended = () => { try { o.disconnect(); g.disconnect() } catch (e) {} }
+    }
+    // 最后一个振荡器结束时把包络也断开
+    const last = nodes[nodes.length - 1]
+    if (last) {
+      const prevEnded = last.onended
+      last.onended = (ev) => {
+        if (prevEnded) prevEnded(ev)
+        try { env.disconnect() } catch (e) {}
+      }
+    }
+    // 有颤音的音色在滑音上不加 LFO：两个自动化叠在同一串振荡器上会互相打架
+    return {
+      stop() { for (const o of nodes) { try { o.stop() } catch (e) {} } },
     }
   }
 

@@ -6,7 +6,28 @@ import { midiToName } from '@/lib/music'
 import TimbreSelect from '@/components/TimbreSelect'
 
 const ScoreView = lazy(() => import('@/components/ScoreView'))
-const shortName = (name) => (name || '').split(' ').pop()
+
+// 声部短名：用于混音器和定音列表里的窄按钮。
+//
+// 不能简单取名字的最后一段：导入的谱叫「Soprano 1」「Bass 2」，
+// 取末段会得到 "1" "2"，混音器上就变成 1 2 1 2 —— 认不出是哪个声部。
+//
+// 优先级：名字里的中文（「Tenor 男高」→「男高」）> 声部 id > 名字首段。
+// 中文最直观，id（S1/A2/T/B1）足够短且唯一，最后才退回英文首词。
+const ZH_IN_NAME = /[\u4e00-\u9fa5]+/
+const shortName = (part) => {
+  if (!part) return ''
+  const name = part.name || ''
+  const zh = name.match(ZH_IN_NAME)
+  // id 和中文名都缺失时才用英文，避免把「Soprano 1」显示成 "1"
+  if (zh) {
+    // 名字里带编号就保留（「Tenor 1 男高」→「男高1」），否则并列声部重名
+    const num = (name.match(/\d+/) || [''])[0]
+    return zh[0] + num
+  }
+  if (part.id) return part.id
+  return name.split(/\s+/)[0] || ''
+}
 
 // 跟谱页：声部切换在顶部，谱面占满，左下角气泡 + 右下角麦克风。
 export default function FollowPage({
@@ -98,8 +119,8 @@ export default function FollowPage({
               onClick={() => onTune(i)}
               className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-secondary"
             >
-              <span className="w-5 text-[11px] font-medium">{p.id}</span>
-              <span className="text-[10px] text-muted-foreground">{shortName(p.name)}</span>
+              <span className="w-6 text-[11px] font-medium">{p.id}</span>
+              <span className="text-[10px] text-muted-foreground">{shortName(p)}</span>
               <span className="ml-auto text-[13px] font-medium tabular">
                 {firsts[i] == null ? '—' : midiToName(firsts[i])}
               </span>
@@ -334,13 +355,13 @@ export default function FollowPage({
                     <div key={p.id || i} className="flex items-center gap-2">
                       <button
                         type="button"
-                        aria-label={`${muted ? '取消静音' : '静音'} ${shortName(p.name) || p.id}`}
+                        aria-label={`${muted ? '取消静音' : '静音'} ${shortName(p)}`}
                         onClick={() => onPartVol && onPartVol(i, muted ? 1 : 0)}
-                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border text-[10px] ${
+                        className={`flex h-6 w-8 shrink-0 items-center justify-center rounded-md border text-[10px] ${
                           muted ? 'border-brand bg-brand/20 text-brand' : 'border-border bg-secondary/40 text-muted-foreground'
                         }`}
                       >
-                        {shortName(p.name) || p.id}
+                        {shortName(p)}
                       </button>
                       <Slider
                         value={[Math.round(v * 100)]}

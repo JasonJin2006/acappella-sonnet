@@ -12,6 +12,7 @@
 import { CueEngine } from './cue.js'
 import { midiToFreq } from './music.js'
 import { buildFxChain, panFor, partGainFor, reverbSeconds, makeImpulse, DEFAULT_FX } from './fx.js'
+import { TempoMap } from './tempo.js'
 
 const TAIL_BASE = 0.8 // 音符结束后的基础余量（秒）
 const LEAD = 0.05     // 开头留一点余量，避免第一个音被裁掉
@@ -47,15 +48,16 @@ export async function renderScore(score, opts = {}) {
   if (!(totalBeats > 0)) throw new Error('这份谱没有可渲染的时值')
 
   const bpm = Math.max(20, Math.min(300, score.bpm || 96))
-  // 播放速率：1 = 原速。改 spb 就能变速，音高由 cue 按频率独立决定，
-  // 所以这里不需要时间伸缩——每个音本来就按目标频率重新合成/变调。
+  // 播放速率：1 = 原速。音高由 cue 按频率独立决定，所以这里不需要
+  // 时间伸缩——每个音本来就按目标频率重新合成/变调。
   const rate = Math.max(0.5, Math.min(2, opts.rate || 1))
-  const spb = 60 / (bpm * rate)
+  // 谱面中途变速时，拍 → 秒按速度表换算；单速谱退化成一条直线
+  const tempo = new TempoMap(score.tempos, bpm, rate)
   const sampleRate = opts.sampleRate || 44100
   const fx = { ...DEFAULT_FX, ...(opts.fx || {}) }
   // 混响尾巴要留够：4 秒的混响只留 0.8 秒尾会把混响切断
   const tail = TAIL_BASE + reverbSeconds(fx)
-  const seconds = LEAD + totalBeats * spb + tail
+  const seconds = LEAD + tempo.secAt(totalBeats) + tail
   const frames = Math.ceil(seconds * sampleRate)
 
   const ctx = new OfflineAudioContext(2, frames, sampleRate)
@@ -103,12 +105,26 @@ export async function renderScore(score, opts = {}) {
       const n = notes[i]
       if (n.midi == null) continue
       const start = line.starts[i]
-      const when = LEAD + start * spb
-      const dur = Math.max(0.06, n.beats * spb * 0.94)
+      // 拍 → 秒走速度表，变速段落会被拉长/压短；时值同理
+      const when = LEAD + tempo.secAt(start)
+      const dur = Math.max(0.06, (tempo.secAt(start + n.beats) - tempo.secAt(start)) * (n.staccato ? 0.5 : 0.94))
       // 每个音自己的力度：和 player.js 用同一个换算，
       // 导出结果才和试听一致
-      const vel = n.vel == null ? 1 : Math.max(0.05, Math.min(1.4, n.vel / 0.58))
+      let vel = n.vel == null ? 1 : Math.max(0.05, Math.min(1.4, n.vel / 0.58))
+      if (n.accent === 1) vel *= 1.25
+      else if (n.accent >= 2) vel *= 1.5
       // 提示音引擎自己解决「采样 or 合成」，这里只要把音排进去
+      const next = notes[i + 1]
+      if (n.gliss && next && next.midi != null && cue.slide) {
+        // 滑音时长上限 1.2 秒，和实时播放同一口径：源音标成 8 拍时
+        // 滑满会变成持续警笛，还会和目标音整段重叠
+        const glideSec = Math.min(dur, 1.2)
+        const ok = cue.slide(
+          midiToFreq(n.midi), midiToFreq(next.midi),
+          glideSec, gain * vel, when, lineOuts[li]
+        )
+        if (ok) { scheduled++; continue }
+      }
       cue.tone(midiToFreq(n.midi), dur, gain * vel, when, lineOuts[li])
       scheduled++
     }
@@ -124,13 +140,6 @@ export async function renderScore(score, opts = {}) {
     sampleRate,
     seconds,
   }
-}
-
-// 把离线渲染结果降到单声道（给需要减小体积的场景用）
-export function toMono(left, right) {
-  const out = new Float32Array(left.length)
-  for (let i = 0; i < left.length; i++) out[i] = (left[i] + right[i]) * 0.5
-  return out
 }
 
 // 峰值归一化到 -1 dB，导出不会削顶

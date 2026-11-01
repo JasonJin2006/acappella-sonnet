@@ -13,18 +13,33 @@ function toNumber(v) {
 
 // 音符支持两种写法：紧凑的 [midi, beats] 和 { midi, beats }。
 // midi 为 null 表示休止，beats 缺省按一拍算。
+//
+// 对象写法还带发音法与滑音（accent / staccato / tenuto / gliss）。
+// 这些字段在紧凑写法里没有，缺省就是"不做处理"。
 function normNotes(raw) {
   if (!Array.isArray(raw)) return null
   const notes = []
   for (const item of raw) {
     let midi = null
     let beats = 1
+    let extra = null
     if (Array.isArray(item)) {
       midi = item[0] == null ? null : toNumber(item[0])
       beats = item[1] == null ? 1 : toNumber(item[1])
     } else if (item && typeof item === 'object') {
       midi = item.midi == null ? null : toNumber(item.midi)
       beats = item.beats == null ? 1 : toNumber(item.beats)
+      // 演奏标记只在对象写法里出现，原样带下去
+      if (item.accent || item.staccato || item.tenuto || item.gliss || item.vel != null) {
+        extra = {}
+        const acc = toNumber(item.accent)
+        if (acc > 0) extra.accent = Math.min(2, Math.round(acc))
+        if (item.staccato) extra.staccato = true
+        if (item.tenuto) extra.tenuto = true
+        if (item.gliss) extra.gliss = true
+        const v = toNumber(item.vel)
+        if (v != null) extra.vel = v
+      }
     } else {
       continue
     }
@@ -35,7 +50,8 @@ function normNotes(raw) {
       // 超出 MIDI 音域的当休止处理，避免把整份谱拖偏
       if (midi < 0 || midi > 127) midi = null
     }
-    notes.push({ midi, beats })
+    // 休止符不发音，发音法标记对它没有意义
+    notes.push(midi == null ? { midi, beats } : (extra ? { midi, beats, ...extra } : { midi, beats }))
   }
   return notes.length ? notes : null
 }
@@ -61,12 +77,29 @@ export function normalizeSong(raw) {
   const barRaw = toNumber(raw.bar)
   const title = String(raw.title || '').trim().slice(0, 120) || '未命名谱面'
 
-  return {
+  const out = {
     title,
     bpm: bpmRaw && bpmRaw >= 30 && bpmRaw <= 260 ? Math.round(bpmRaw) : 96,
     bar: barRaw && barRaw >= 1 && barRaw <= 12 ? Math.round(barRaw) : 4,
     parts,
   }
+  // 速度表：包里写了就带下去，逐条校验。中途变速是曲目本身的属性，
+  // 丢掉它整首会被拉成一个速度。
+  if (Array.isArray(raw.tempos) && raw.tempos.length) {
+    const list = []
+    for (const t of raw.tempos) {
+      const beat = toNumber(t && (t.beat != null ? t.beat : t.atBeat))
+      const bpm = toNumber(t && (t.bpm != null ? t.bpm : t.tempo))
+      if (beat == null || bpm == null || beat < 0 || bpm < 30 || bpm > 260) continue
+      list.push({ beat, bpm: Math.round(bpm) })
+    }
+    if (list.length > 1) {
+      list.sort((a, b) => a.beat - b.beat)
+      if (list[0].beat > 1e-6) list.unshift({ beat: 0, bpm: out.bpm })
+      out.tempos = list
+    }
+  }
+  return out
 }
 
 // 接受整个包对象，也接受只有歌曲数组的裸 JSON

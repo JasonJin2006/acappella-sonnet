@@ -54,17 +54,23 @@ public class NativeAudioPlugin extends Plugin {
             return;
         }
         int sr = call.getInt("sampleRate", 48000);
-        boolean ok = NativeAudio.start(sr);
-        JSObject ret = new JSObject();
-        ret.put("ok", ok);
-        ret.put("sampleRate", ok ? NativeAudio.getSampleRate() : 0);
-        call.resolve(ret);
+        // start() 内部会停 80ms 左右验证回调是否真的在跑（见 native_audio.cpp），
+        // 放主线程会卡住 UI，挪到后台线程。Capacitor 的 resolve 可以在任意线程调用。
+        ioExecutor.execute(() -> {
+            boolean ok = NativeAudio.start(sr);
+            JSObject ret = new JSObject();
+            ret.put("ok", ok);
+            ret.put("sampleRate", ok ? NativeAudio.getSampleRate() : 0);
+            call.resolve(ret);
+        });
     }
 
     @PluginMethod
     public void stop(PluginCall call) {
-        NativeAudio.stop();
-        call.resolve();
+        ioExecutor.execute(() -> {
+            NativeAudio.stop();
+            call.resolve();
+        });
     }
 
     /**
@@ -147,6 +153,31 @@ public class NativeAudioPlugin extends Plugin {
             call.resolve(ret);
         } catch (JSONException e) {
             call.reject("playScore failed: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void setTempos(PluginCall call) {
+        try {
+            JSArray beatsA = call.getArray("beats");
+            JSArray bpmsA = call.getArray("bpms");
+            if (beatsA == null || bpmsA == null) {
+                call.reject("beats/bpms required");
+                return;
+            }
+            int n = Math.min(beatsA.length(), bpmsA.length());
+            double[] beats = new double[n];
+            double[] bpms = new double[n];
+            for (int i = 0; i < n; i++) {
+                beats[i] = beatsA.getDouble(i);
+                bpms[i] = bpmsA.getDouble(i);
+            }
+            NativeAudio.setTempos(beats, bpms, n);
+            JSObject ret = new JSObject();
+            ret.put("count", n);
+            call.resolve(ret);
+        } catch (JSONException e) {
+            call.reject("setTempos failed: " + e.getMessage());
         }
     }
 

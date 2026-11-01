@@ -66,29 +66,46 @@ export function extractPartGeometry(osmd, partIndex) {
   return { notes: ordered, groups }
 }
 
-// 取每行五线谱（每个声部一行）的顶线位置，单位是 OSMD 排版单位。
+// 取每行五线谱（每个声部一行）的位置。
 //
-// 实测（OSMD 1.x）：第一小节 staffEntries 的 PositionAndShape.AbsolutePosition.y
-// 给出的是**每行谱表的顶线**，同一个声部的多个 entry 共用同一个 y。
-// 4 声部时是 10.55 / 18.55 / 26.55 / 36.45，间距 8~10 就是行距。
-// 调用方负责换算成屏幕像素，并自行补上「顶线 → 谱表中线」的偏移。
+// 返回 { partIndex, y, h }，y 是 OSMD 排版单位下的**谱表顶线**。
+// 调用方负责换算成屏幕像素。
+//
+// 这里必须按声部（staffEntries 的顺序）逐个取，不能去数 SVG 里的横线：
+// 实测 7 声部的谱里，getBBox 会把符杠（beam）这类宽横条也算成"长横线"，
+// 数出来 8 组而实际只有 7 个声部，之后每 5 条一组就整体错位 ——
+// 表现就是左边的声部名和谱表对不上。
+//
+// staffEntries 的顺序就是声部从上到下的顺序，直接给下标，不用猜。
 export function extractStaffRows(osmd) {
   const gs = osmd.GraphicSheet
   if (!gs || !gs.MeasureList || !gs.MeasureList.length) return null
   const firstLine = gs.MeasureList[0]
   if (!firstLine) return null
 
-  const ys = []
+  const rows = []
   for (const gm of firstLine) {
     for (const se of (gm && gm.staffEntries) || []) {
       const aps = se.PositionAndShape
-      if (!aps) continue
-      const y = aps.AbsolutePosition ? aps.AbsolutePosition.y : null
-      if (y == null) continue
-      if (!ys.some((v) => Math.abs(v - y) < 0.5)) ys.push(y)
+      if (!aps || !aps.AbsolutePosition) continue
+      const y = aps.AbsolutePosition.y
+      const h = aps.Size && aps.Size.height ? aps.Size.height : 4
+      // 同一行谱表会被多个小节/多个 entry 重复报到，按 y 去重
+      if (rows.some((r) => Math.abs(r.y - y) < 0.5)) continue
+      // ParentStaff 能给出它属于哪个声部，比按下标硬对更可靠
+      const staff = se.ParentStaff
+      const partIndex = staff && staff.ParentInstrument
+        ? staff.ParentInstrument.IdString != null
+          ? (typeof staff.ParentInstrument.IdString === 'number'
+              ? staff.ParentInstrument.IdString
+              : (staff.ParentInstrument.Index != null ? staff.ParentInstrument.Index : null))
+          : null
+        : null
+      rows.push({ y, h, partIndex })
     }
   }
-  if (!ys.length) return null
-  ys.sort((a, b) => a - b)
-  return ys.map((y, i) => ({ partIndex: i, y, h: 4 }))
+  if (!rows.length) return null
+  rows.sort((a, b) => a.y - b.y)
+  // partIndex 拿不到时退回"从上到下第几个"——这个顺序和声部顺序一致
+  return rows.map((r, i) => ({ partIndex: r.partIndex == null ? i : r.partIndex, y: r.y, h: r.h, rowIndex: i }))
 }

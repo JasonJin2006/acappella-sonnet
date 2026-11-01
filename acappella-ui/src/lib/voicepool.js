@@ -86,7 +86,14 @@ export class VoicePool {
 
     const { env } = this._takeEnv()
     const target = opt.dest || this.dest
-    try { env.connect(target) } catch (e) { /* 已连接 */ }
+    // 复用的 env 可能还连着上一轮的目标。连接是叠加的：同一个 env
+    // 连同一个目标两次，信号会被送进去两遍，响度翻倍、相位叠加，
+    // 听感就是发毛、发刺。所以只在目标变了的时候重新接。
+    if (env.__target !== target) {
+      try { env.disconnect() } catch (e) { /* 本来就没连 */ }
+      try { env.connect(target) } catch (e) { /* 目标已失效 */ }
+      env.__target = target
+    }
 
     // AudioBufferSourceNode 不能复用，每次新建（这是唯一无法避免的分配）
     const src = ctx.createBufferSource()
@@ -104,28 +111,36 @@ export class VoicePool {
     const peak = Math.max(0.0001, opt.peak)
     const attack = Math.min(opt.attack == null ? 0.012 : opt.attack, dur * 0.4)
     const release = Math.min(opt.release == null ? 0.06 : opt.release, dur * 0.5)
+    // 起音时刻不能早于"现在"。
+    //
+    // when 是提前排期的时间点，正常情况下在未来；但排期迟到（主线程卡顿、
+    // 起播时 LEAD 已过）时 when 会落在过去。此时 setValueAtTime(0.0001, when)
+    // 会立刻把增益从当前值跳到 0.0001 —— 一个满幅阶跃，就是"刺啦"声。
+    // 钳到 now 之后，包络至少还有完整的起音段。
+    const now = this.ctx.currentTime
+    const t0 = Math.max(when, now + 0.002)
     try {
-      g.cancelScheduledValues(when)
-      g.setValueAtTime(0.0001, when)
-      g.linearRampToValueAtTime(peak, when + attack)
+      g.cancelScheduledValues(t0)
+      g.setValueAtTime(0.0001, t0)
+      g.linearRampToValueAtTime(peak, t0 + attack)
       if (opt.sustain) {
-        g.linearRampToValueAtTime(peak * 0.9, when + Math.min(dur * 0.3, 0.12))
-        g.setValueAtTime(peak * 0.9, Math.max(when + attack, end - release))
+        g.linearRampToValueAtTime(peak * 0.9, t0 + Math.min(dur * 0.3, 0.12))
+        g.setValueAtTime(peak * 0.9, Math.max(t0 + attack, end - release))
       } else if (opt.decay) {
-        const dec = Math.min(when + Math.max(0.08, opt.decay), end - 0.005)
+        const dec = Math.min(t0 + Math.max(0.08, opt.decay), end - 0.005)
         g.exponentialRampToValueAtTime(Math.max(0.0001, peak * 0.22), dec)
       } else {
-        const settle = Math.min(when + attack + Math.max(0.12, dur * 0.25), end - release)
+        const settle = Math.min(t0 + attack + Math.max(0.12, dur * 0.25), end - release)
         g.linearRampToValueAtTime(peak * 0.88, settle)
         g.setValueAtTime(peak * 0.88, Math.max(settle, end - release))
       }
-      g.linearRampToValueAtTime(0.0001, end)
+      g.linearRampToValueAtTime(0.0001, Math.max(end, t0 + 0.01))
     } catch (e) { /* 参数异常时保持静音 */ }
 
-    src.start(when)
-    try { src.stop(end + 0.05) } catch (e) {}
+    src.start(t0)
+    try { src.stop(Math.max(end, t0) + 0.05) } catch (e) {}
 
-    const entry = { src, env, endAt: end + 0.05, pool: this }
+    const entry = { src, env, endAt: Math.max(end, t0) + 0.05, pool: this }
     this.active.push(entry)
     this._scheduleSweep()
     return entry
@@ -144,14 +159,23 @@ export class VoicePool {
     const now = this.ctx.currentTime
     const keep = []
     for (const v of this.active) {
-      if (v.endAt <= now + 0.02) {
+      // 回收条件要留出包络走完的时间。
+      //
+      // 包络在 end 才降到 0.0001，而 endAt = end + 0.05。之前用
+      // `endAt <= now + 0.02` 判定，等于在包络还在下降时就把它强行
+      // setValueAtTime(0.0001) —— 那是一个阶跃，听感就是"刺啦"的电流声。
+      // 现在必须等包络真正结束（endAt 之后再留 60ms 余量）才回收。
+      if (v.endAt + 0.06 <= now) {
         try { v.src.disconnect() } catch (e) {}
-        // AudioBufferSourceNode 不能复用，丢掉；env 还回去（先断开旧目标）
-        try { v.env.disconnect() } catch (e) {}
+        // AudioBufferSourceNode 不能复用，丢掉；env 还回去。
+        // 归还前先确认增益已经到底，避免下次复用时从半空中起步。
         try {
           v.env.gain.cancelScheduledValues(now)
           v.env.gain.setValueAtTime(0.0001, now)
         } catch (e) {}
+        try { v.env.disconnect() } catch (e) {}
+        // 断开后目标标记作废，下次复用时必须重新连
+        v.env.__target = null
         this.free.push({ env: v.env })
       } else {
         keep.push(v)
@@ -165,10 +189,23 @@ export class VoicePool {
   stopAll() {
     const now = this.ctx.currentTime
     for (const v of this.active) {
-      try { v.src.stop(now) } catch (e) {}
-      try { v.src.disconnect() } catch (e) {}
-      try { v.env.disconnect() } catch (e) {}
-      try { v.env.gain.cancelScheduledValues(now) } catch (e) {}
+      // 先淡出再断开：直接 disconnect 会在波形中途切断，产生爆音。
+      // 淡出时间 20ms，足够听不出来又不会拖慢停止响应。
+      try {
+        v.env.gain.cancelScheduledValues(now)
+        v.env.gain.setValueAtTime(Math.max(0.0001, v.env.gain.value), now)
+        v.env.gain.linearRampToValueAtTime(0.0001, now + 0.02)
+      } catch (e) {}
+      try { v.src.stop(now + 0.03) } catch (e) {}
+      // 断开延后到淡出走完：立刻 disconnect 会让淡出来不及被听到
+      const env = v.env
+      const src = v.src
+      setTimeout(() => {
+        try { src.disconnect() } catch (e) {}
+        try { env.disconnect() } catch (e) {}
+        try { env.gain.cancelScheduledValues(0) } catch (e) {}
+        env.__target = null
+      }, 60)
       this.free.push({ env: v.env })
     }
     this.active = []

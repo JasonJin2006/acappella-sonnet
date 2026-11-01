@@ -76,6 +76,12 @@ public final class NativeAudio {
     /** 是否正在播放。 */
     public static native boolean isPlaying();
 
+    /**
+     * 灌入速度表。谱面中途变速时播放头按这张表推进。
+     * beats / bpms 等长、按 beat 升序，第 0 项应为 0 拍处。
+     */
+    public static native void setTempos(double[] beats, double[] bpms, int count);
+
     public static native void setMasterGain(float gain);
 
     public static native void setReverbMix(float mix);

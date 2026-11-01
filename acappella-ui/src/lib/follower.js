@@ -1,7 +1,12 @@
-// 从已验证的单文件版本原样抽离，逻辑未做任何改动
+// 单声部跟谱：Online DTW。
+//
+// 只跟一个声部。团队位置由 engine.js 的多声部认领 + 冷启动定位决定，
+// 早期那个「整和弦一起跟」的 EnsembleFollower 已经删除：多基频漏检时
+// 整体代价差拉不开，实测会来回跳，不如逐声部跟再取共识稳。
 /* ============ 跟谱：Online DTW ============ */
 class Follower{
   constructor(notes, opts){
+    opts = opts || {};
     this.notes = notes;                       // [{midi,beats}]
     this.n = notes.length;
     this.bpm = opts.bpm || 96;
@@ -9,7 +14,23 @@ class Follower{
     this.W_STEP = 1.5;                        // 前进一音的基础惩罚
     this.W_SKIP = 3.0;                        // 一次跳两音的惩罚
     this.ONSET_BONUS = 0.35;                  // 起音时给"前进"的奖励（重复同音高靠它区分）
+    // 每个音的起始拍：变速谱里"这个音该唱多久"要按它所在位置的速度算。
+    // 没有速度表时 tempo 为 null，全部退回 secPerBeat，行为与以前一致。
+    this.starts = new Float64Array(this.n);
+    let acc = 0;
+    for (let i = 0; i < this.n; i++) { this.starts[i] = acc; acc += notes[i].beats || 0 }
+    this.tempo = opts.tempo || null;
     this.reset();
+  }
+  // 第 i 个音按谱面速度应该持续多少秒
+  _expectSec(i){
+    const beats = Math.max(0.08 / this.secPerBeat, (this.notes[i] && this.notes[i].beats) || 0)
+    if (this.tempo) {
+      const b = this.starts[i] || 0
+      const s = this.tempo.secAt(b + beats) - this.tempo.secAt(b)
+      if (s > 0) return Math.max(0.08, s)
+    }
+    return Math.max(0.08, beats * this.secPerBeat)
   }
   reset(){
     this.cum = new Float64Array(this.n);
@@ -45,9 +66,14 @@ class Follower{
   // 相邻两个音音高相同时靠不出声是分不出来的，必须基本唱满才能切，
   // 否则会提前一两拍跳到下一个音（谱面上看着就像光标跑偏）
   stepPen(holdSec, beats, samePitch){
-    const expect = Math.max(0.08, beats * this.secPerBeat);
+    const expect = this._expectSecForBeats(beats)
     const frac = holdSec / ((samePitch ? 0.92 : 0.55) * expect);
     return this.W_STEP * Math.max(0, 1 - frac);
+  }
+  // stepPen 只拿到 beats，拿不到下标；按构造时的平均秒/拍估一个够用的值。
+  // 变速段落里这一处是"惩罚衰减"的尺度，差一点不会影响定位正确性。
+  _expectSecForBeats(beats){
+    return Math.max(0.08, (beats || 0) * this.secPerBeat)
   }
   // onset: 0=无 1=弱(仅能量峰) 2=强(静音后重新出声 / 音高跳变)
   // opts: {lo, hi} —— 锁定态下只在 pos 附近这个小窗口里活动。
@@ -82,7 +108,7 @@ class Follower{
 
         // 起音奖励不能随便给：合唱里认领到的音高会抖，频繁触发起音会让位置一路狂奔。
         // 没唱够六成时值就不给这份奖励，交给音高匹配自己决定（不加额外惩罚，免得 solo 也被拖慢）
-        const expectSec = Math.max(0.08, this.notes[j-1].beats * this.secPerBeat)
+        const expectSec = this._expectSec(j-1)
         if(pen < 0 && prevHold[j-1] < expectSec * 0.6) pen = this.stepPen(prevHold[j-1], this.notes[j-1].beats, same)
         const v = prev[j-1] + pen;
         if(v < best){ best = v; pred = j-1; }
@@ -111,7 +137,7 @@ class Follower{
     // 光靠匹配会一直卡在原地（实测合唱里能慢出 20%）。
     // 有声时阈值 1.35 倍（团队比谱面慢三成以内不会被误伤）；
     // 听不见时放宽到 2.5 倍——低音本来就常检不出，那多半是漏检而不是真停了。
-    const expect = Math.max(0.08, this.notes[bj].beats * this.secPerBeat)
+    const expect = this._expectSec(bj)
     const lim = this.voicedRun >= 3 ? 1.35 : 2.5
     if (bj + 1 < n && this.hold[bj] > expect * lim) bj = bj + 1
     this.pos = bj;
@@ -141,7 +167,7 @@ class Follower{
       while(d < -6) d += 12;
       cs = d * 100;
     }
-    this.trace.push({pos:bj, midi:obs.midi, c:obs.clarity, cs});
+    this.trace.push({pos:bj, midi:obs.midi, clarity:obs.clarity, cents:cs});
     if(this.trace.length > 320) this.trace.shift();
     return bj;
   }
@@ -184,145 +210,3 @@ class Follower{
 
 
 export { Follower };
-
-// 团队跟谱器：不拆声部，直接拿"此刻听到的所有音高"去比对
-// "谱面此刻应该同时响着哪些音"。
-//
-// 为什么不用"每个声部各跟一个再投票"：多基频总会有漏检，
-// 谁被检出就谁说了算，团队位置会来回跳甚至倒退。
-// 改成整体和弦匹配后，漏检一两个音也只是让匹配度略降，不会带偏位置。
-export class EnsembleFollower {
-  constructor(parts, opts) {
-    this.bpm = opts && opts.bpm ? opts.bpm : 96
-    this.secPerBeat = 60 / this.bpm
-    this.W_STEP = 1.5
-    this.W_SKIP = 3.0
-
-    // 事件边界 = 所有声部音符起止点的并集
-    const bounds = new Set([0])
-    for (const p of parts) {
-      let acc = 0
-      for (const n of p.notes) { acc += n.beats; bounds.add(acc) }
-    }
-    const bs = [...bounds].sort((a, b) => a - b)
-    this.events = []
-    for (let i = 0; i < bs.length; i++) {
-      const b = bs[i]
-      const pitches = []
-      for (const p of parts) {
-        let acc = 0
-        for (const n of p.notes) {
-          if (acc <= b + 1e-9 && b < acc + n.beats - 1e-9) {
-            if (n.midi != null) pitches.push(n.midi)
-            break
-          }
-          acc += n.beats
-        }
-      }
-      this.events.push({
-        beat: b,
-        beats: i + 1 < bs.length ? bs[i + 1] - b : 1,
-        pitches,
-      })
-    }
-    this.n = this.events.length
-    this.mismatchFrames = 0
-    this.voicedRun = 0
-    this.reset()
-  }
-
-  reset() {
-    this.cum = new Float64Array(this.n)
-    this.hold = new Float64Array(this.n)
-    for (let j = 0; j < this.n; j++) this.cum[j] = j * 0.25
-    this.prev = this.cum.slice()
-    this.prevHold = this.hold.slice()
-    this.pos = 0
-  }
-
-  // obs：此刻听到的所有音高（浮点 MIDI 数组）
-  cost(j, obs) {
-    const ev = this.events[j]
-    if (!ev.pitches.length) return obs && obs.length ? 0.28 : 0.30
-    if (!obs || !obs.length) return 0.30
-    let total = 0
-    for (const m of ev.pitches) {
-      let best = 12
-      for (const o of obs) {
-        let d = o - m
-        while (d > 6) d -= 12
-        while (d < -6) d += 12
-        const a = d < 0 ? -d : d
-        if (a < best) best = a
-      }
-      total += Math.min(best, 12) / 12
-    }
-    return (total / ev.pitches.length) * 2.2
-  }
-
-  stepPen(holdSec, beats) {
-    const expect = Math.max(0.08, beats * this.secPerBeat)
-    return this.W_STEP * Math.max(0, 1 - holdSec / (0.55 * expect))
-  }
-
-  push(obs, dt, voiced) {
-    if (!(dt > 0)) dt = 1 / 30
-    this.voicedRun = voiced ? this.voicedRun + 1 : 0
-    const frozen = this.voicedRun < 3
-    const n = this.n, prev = this.prev, prevHold = this.prevHold
-    const cur = new Float64Array(n), curHold = new Float64Array(n)
-    for (let j = 0; j < n; j++) {
-      let best = prev[j], pred = j
-      if (j > 0) {
-        let pen = this.stepPen(prevHold[j - 1], this.events[j - 1].beats)
-        if (frozen) pen = this.W_STEP * 2
-        const v = prev[j - 1] + pen
-        if (v < best) { best = v; pred = j - 1 }
-      }
-      if (j > 1) {
-        const v = prev[j - 2] + (frozen ? this.W_SKIP * 2 : this.W_SKIP)
-        if (v < best) { best = v; pred = j - 2 }
-      }
-      cur[j] = best + this.cost(j, obs) * dt
-      curHold[j] = pred === j ? prevHold[j] + dt : 0
-    }
-    let mn = Infinity
-    for (let j = 0; j < n; j++) if (cur[j] < mn) mn = cur[j]
-    for (let j = 0; j < n; j++) cur[j] -= mn
-    this.prev = cur; this.prevHold = curHold; this.hold = curHold
-    let bj = 0, bv = Infinity
-    for (let j = 0; j < n; j++) { const k = cur[j] - 1e-6 * j; if (k < bv) { bv = k; bj = j } }
-
-    // 音乐是往前走的：偶尔一两帧想往回跳是匹配抖动，忽略掉；
-    // 只有连续多帧都坚持要回去（比如真的从头重来）才放行
-    if (bj < this.pos - 1) {
-      this.backFrames = (this.backFrames || 0) + 1
-      if (this.backFrames < 15) bj = this.pos
-      else this.backFrames = 0
-    } else {
-      this.backFrames = 0
-    }
-    this.pos = bj
-
-    if (voiced && obs && obs.length) {
-      let bc = Infinity
-      for (let k = 0; k < n; k++) { const c = this.cost(k, obs); if (c < bc) bc = c }
-      this.mismatchFrames = bc > 1.4 ? this.mismatchFrames + 1 : 0
-    } else {
-      this.mismatchFrames = 0
-    }
-    return bj
-  }
-
-  get beat() { return this.events[this.pos] ? this.events[this.pos].beat : 0 }
-
-  confidence() {
-    let b1 = Infinity, b2 = Infinity
-    for (let j = 0; j < this.n; j++) {
-      const v = this.prev[j]
-      if (v < b1) { b2 = b1; b1 = v } else if (v < b2) b2 = v
-    }
-    if (!isFinite(b2)) return 1
-    return Math.max(0, Math.min(1, (b2 - b1) / 1.2))
-  }
-}

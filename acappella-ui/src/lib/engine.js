@@ -12,6 +12,7 @@ import { ColdStartAligner } from './coldstart'
 import { midiToFreq } from './music'
 import { sharedCtx } from './sharedCtx'
 import { openMic } from './audioInput'
+import { TempoMap } from './tempo'
 
 // 锁定之后，跟谱器每帧最多在 pos 附近这么大的范围里活动。
 // 一旦锁定就默认接着走，只有持续严重对不上才回到冷启动重新定位。
@@ -108,8 +109,13 @@ export class Pilot {
   }
 
   _rebuildFollowers() {
+    // 谱面速度表：变速谱里每个音「该唱多久」都不一样，跟谱器要按音的位置
+    // 查速度，不能用一个全局 secPerBeat。单速谱会退化成一条直线。
+    this.tempo = new TempoMap(this.score.tempos, this.score.bpm)
     // 每个声部各有一个跟谱器，各自只认领与自己谱面吻合的那个基频
-    this.followers = this.score.parts.map((p) => new Follower(p.notes, { bpm: this.score.bpm }))
+    this.followers = this.score.parts.map(
+      (p) => new Follower(p.notes, { bpm: this.score.bpm, tempo: this.tempo })
+    )
     this.partState = this.score.parts.map(() => ({ prevMidi: null, silentMs: 0, lastOnset: 0 }))
     this.lastPos = -1
     this.nextCuedFor = -1
@@ -226,7 +232,10 @@ export class Pilot {
       part.startBeats[part.notes.length - 1] != null
         ? part.startBeats[part.notes.length - 1] + (part.notes[part.notes.length - 1].beats || 0)
         : 0
-    this.teamBeat += (dt / this.secPerBeat) * (this.manualTempo || 1)
+    // 时钟推进按「当前位置的速度」走：变速谱里同一秒走过的拍数不同，
+    // 用固定 secPerBeat 会让中段开始整体偏快或偏慢
+    const spbNow = this.tempo ? this.tempo.secPerBeatAt(this.teamBeat) : this.secPerBeat
+    this.teamBeat += (dt / spbNow) * (this.manualTempo || 1)
     if (this.teamBeat > total) this.teamBeat = total
 
     const mine = chosen[this.myPart]
@@ -333,6 +342,7 @@ export class Pilot {
     this.metroLastBeat = -1
     this.frames = 0
     this.lastT = performance.now()
+    this._tickAt = 0
 
     this.running = true
     this.onFrame = onFrame
@@ -343,6 +353,8 @@ export class Pilot {
       if (dt >= 1 / (this.fps * 1.15)) {
         this.lastT = now
         this._tick(Math.min(dt, 0.5))
+        // 记下这次分析的时刻，供平滑位置外推用
+        this._tickAt = now
       }
       if (this.onFrame) this.onFrame(this.frame, this)
       this.raf = requestAnimationFrame(loop)
@@ -351,11 +363,32 @@ export class Pilot {
     return { ok: true }
   }
 
+  // 两次分析之间的连续位置，给「画面滚动」用。
+  //
+  // 分析按 30fps 跑（多基频 + 谐波检验，跑不满 60fps），于是 teamBeat
+  // 是每 33ms 跳一小格。拿这个格子值直接滚谱面，画面就是 30fps 的阶梯；
+  // 而 rAF 是 60fps 的，一半的帧没有新值可画 —— 实测 80% 的帧谱面完全静止。
+  //
+  // 这里按「距离上次分析过去了多久」把位置往前推一点，让滚动每帧都有
+  // 位移。只用于显示：判定、提示音仍然用真实分析出来的位置。
+  smoothBeat() {
+    if (!this.running) return this.teamBeat || 0
+    const at = this._tickAt
+    if (!at) return this.teamBeat || 0
+    const dt = Math.max(0, Math.min(0.06, (performance.now() - at) / 1000))
+    // 手动模式下时钟是匀速的，可以直接外推；自动模式速度由团队决定，
+    // 外推同样成立——用的就是上一帧估出的 tempo
+    const baseSpb = this.tempo ? this.tempo.secPerBeatAt(this.teamBeat) : this.secPerBeat
+    const spb = baseSpb / (this.teamTempo || 1)
+    return (this.teamBeat || 0) + dt / spb
+  }
+
   stop() {
     // 作废还在等 getUserMedia 的那次 start
     this._startToken++
     this.starting = false
     this.running = false
+    this._tickAt = 0
     cancelAnimationFrame(this.raf)
     if (this.cue) this.cue.stopSustain()
     if (this.src) { try { this.src.disconnect() } catch (e) {} this.src = null }
@@ -525,16 +558,18 @@ export class Pilot {
         this.coldFail = 0
         this.teamBeat = s.beat
         this.teamTempo = s.tempo
-        const spb = this.secPerBeat / (s.tempo || 1)
         for (let pi = 0; pi < parts.length; pi++) {
           const pos = this._posAtBeat(parts[pi], s.beat)
           const start = parts[pi].startBeats[pos] || 0
-          this.followers[pi].jumpTo(pos, Math.max(0, (s.beat - start) * spb))
+          // 这个音已经唱了多久：变速谱要按速度表算秒数
+          const spb = this.tempo ? this.tempo.secPerBeatAt(s.beat) : this.secPerBeat
+          this.followers[pi].jumpTo(pos, Math.max(0, (s.beat - start) * spb / (s.tempo || 1)))
         }
         this.mismatchMs = 0
       } else if (this.hasLocked) {
         // 重定位期间音乐还在走，按已知速度外推，免得谱面卡死在原地
-        this.teamBeat += dt / (this.secPerBeat / (this.teamTempo || 1))
+        const spb = this.tempo ? this.tempo.secPerBeatAt(this.teamBeat) : this.secPerBeat
+        this.teamBeat += dt / (spb / (this.teamTempo || 1))
       }
       anchor = -1
       bestScore = 0
@@ -628,7 +663,7 @@ export class Pilot {
     }
 
     // 我唱的音高轨迹，按"团队此刻在哪"记，用来画曲线
-    this.trace.push({ pos: dpos, midi: mine ? mine.midi : null, cs: cents, c: mine ? 0.85 : 0 })
+    this.trace.push({ pos: dpos, midi: mine ? mine.midi : null, cents, clarity: mine ? 0.85 : 0 })
     if (this.trace.length > 320) this.trace.shift()
 
     if (locked) this._cue(dpos, target, next, myPart.notes, cents)
@@ -716,7 +751,7 @@ export class Pilot {
     if (st.nextCue && next != null && this.nextCuedFor !== pos && st.advance > 0) {
       const fp = this.followers[this.myPart]
       const elapsed = fp.hold[fp.pos]
-      const expectSec = Math.max(0.08, (notes[pos] ? notes[pos].beats : 1) * fp.secPerBeat)
+      const expectSec = fp._expectSec ? fp._expectSec(pos) : Math.max(0.08, (notes[pos] ? notes[pos].beats : 1) * fp.secPerBeat)
       if (Math.max(0, expectSec - elapsed) <= st.advance / 1000) {
         this.nextCuedFor = pos
         this.cue.tone(midiToFreq(next + oct), 0.16, 0.42)

@@ -7,6 +7,7 @@ import { scoreToMidi, downloadBlob, safeFileName, encodeWav } from '@/lib/export
 import { renderScore, normalize } from '@/lib/render'
 import { encodeMp3, resample, MP3_RATES } from '@/lib/mp3'
 import { scoreToMusicXML } from '@/lib/musicxml'
+import { TempoMap } from '@/lib/tempo'
 
 // 创作域的「导出」子页：音频（WAV / MP3）、乐谱（MusicXML）、工程交换（MIDI）。
 // 渲染是纯本地的，不上传任何东西。
@@ -28,7 +29,11 @@ export default function ExportPanel({ score, settings }) {
     0,
     ...score.parts.map((p) => p.notes.reduce((s, n) => s + n.beats, 0))
   )
-  const seconds = Math.round((totalBeats * 60) / (score.bpm || 96))
+  // 变速谱不能直接用"总拍 × 60 / bpm"：中段换了速度，实际时长和这个算法
+  // 差很多（这份 79 小节的谱差 80 秒）。有速度表就按它算，和渲染结果一致。
+  const seconds = Math.round(
+    new TempoMap(score.tempos, score.bpm || 96, settings.playRate || 1).secAt(totalBeats)
+  )
 
   // 渲染一次，供 WAV / MP3 共用。
   // 采样率由用户选，renderScore 直接按目标采样率跑离线渲染，

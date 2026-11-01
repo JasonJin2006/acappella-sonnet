@@ -25,6 +25,7 @@
 #include <dlfcn.h>
 #include <cstdint>
 #include <atomic>
+#include <ctime>
 #include <cmath>
 #include <cstring>
 #include <vector>
@@ -245,6 +246,14 @@ struct Reverb {
   }
 };
 
+// 速度表的一段：从 beat 开始用多大速度。JS 侧按谱面标记灌进来。
+struct TempoPoint {
+  double beat = 0.0;
+  double bpm = 96.0;
+};
+
+constexpr int MAX_TEMPO_POINTS = 64;
+
 struct Engine {
   void* stream = nullptr;
   int sampleRate = 48000;
@@ -260,6 +269,12 @@ struct Engine {
   std::atomic<int> nextEvent{0};
   std::mutex eventMutex;
 
+  // 速度表。谱面中途变速时不能再用单一 bpm：
+  // 播放头推进的速度要随位置变，否则中段开始整体提前或拖后。
+  // 固定容量数组 + 原子计数，音频线程里只读，不加锁不分配。
+  TempoPoint tempos[MAX_TEMPO_POINTS];
+  std::atomic<int> tempoCount{0};
+
   // 播放状态
   std::atomic<bool> playing{false};
   std::atomic<double> startBeat{0.0};
@@ -270,6 +285,21 @@ struct Engine {
   std::atomic<double> reverbMix{0.18};
   std::atomic<bool> loopEnabled{false};
   std::atomic<bool> lowPower{false};
+
+  // 第 beat 拍这一刻的速度（拍/秒）。没有速度表时退回单一 bpm。
+  double bpmAt(double beat) const {
+    const int n = tempoCount.load(std::memory_order_acquire);
+    if (n <= 0) return bpm.load(std::memory_order_relaxed);
+    // 找最后一个 startBeat <= beat 的段
+    int lo = 0, hi = n - 1;
+    if (beat <= tempos[0].beat) return tempos[0].bpm;
+    while (lo < hi) {
+      const int mid = (lo + hi + 1) >> 1;
+      if (tempos[mid].beat <= beat) lo = mid;
+      else hi = mid - 1;
+    }
+    return tempos[lo].bpm;
+  }
 
   // 渲染线程私有
   double beatsPerFrame = 0.0;
@@ -312,10 +342,10 @@ struct Engine {
       return;
     }
 
-    const double bpmNow = bpm.load(std::memory_order_relaxed);
-    // 每帧推进多少拍
-    const double beatsPerSec = bpmNow / 60.0;
-    const double bpf = beatsPerSec / (double)sampleRate;
+    // 每帧推进多少拍。速度随播放位置变化，所以在循环里查；
+    // 变化只是数组一次二分，代价可以忽略。这里先算一个默认值，
+    // 循环内每 64 帧重算一次（速度表的分辨率是"小节"级别，够用）。
+    const double bpfBase = bpmAt(currentBeat.load(std::memory_order_relaxed)) / 60.0 / (double)sampleRate;
 
     double beat = currentBeat.load(std::memory_order_relaxed);
     const double start = startBeat.load(std::memory_order_relaxed);
@@ -326,6 +356,10 @@ struct Engine {
 
     int active = 0;   // 本批渲染结束时的活动 voice 数（循环外累计）
     for (int i = 0; i < numFrames; i++) {
+      // 速度每 64 帧复核一次：速度表最多几十段，一分钟内换不了几次，
+      // 每帧都查没必要，但整批只查一次会在变速点之后继续用旧速度
+      // 最多 64 帧（≈1.3ms），肉耳听不出来。
+      const double bpf = (i % 64 == 0) ? (bpmAt(beat) / 60.0 / (double)sampleRate) : bpfBase;
       // 到点了就触发新音符
       while (nextEv < evTotal && evs[nextEv].beat <= beat + 1e-9) {
         spawnVoice(evs[nextEv], beat);
@@ -478,8 +512,10 @@ struct Engine {
     float angle = (p + 1.0f) * 0.25f * 3.14159265f;
     v.panL = std::cos(angle);
     v.panR = std::sin(angle);
-    // 结束位置：按音符长度换算成采样帧
-    double secPerBeat = 60.0 / bpm.load(std::memory_order_relaxed);
+    // 结束位置：按音符长度换算成采样帧。
+    // 用这个音所在位置的速度，不是全曲第一个速度——变速段落里
+    // 长音会被拉长或压短，用错速度会提前收声或拖到下一拍。
+    double secPerBeat = 60.0 / bpmAt(atBeat);
     double durSec = ev.lengthBeats * secPerBeat;
     double frames = durSec * sampleRate * v.playbackRate;
     v.endPosition = frames;
@@ -488,6 +524,78 @@ struct Engine {
 };
 
 Engine gEngine;
+
+// 回调实现在下面，openStream 要先把它们登记进 builder
+aaudio_callback_result_t dataCallback(void* stream, void* userData,
+                                      void* audioData, int32_t numFrames);
+void errorCallback(void* stream, void* userData, aaudio_result_t error);
+
+// 回调真的在跑吗：隔一小段时间看帧计数有没有涨。
+// requestStart 返回 OK 不代表回调会进——系统拒绝音频焦点时就是这样，
+// 表现为「播放在跑、位置永远 0、没有声音」。
+static bool callbackIsRunning(int waitMs) {
+  long long before = gEngine.framesRendered.load(std::memory_order_relaxed);
+  struct timespec ts { 0, waitMs * 1000000L };
+  nanosleep(&ts, nullptr);
+  long long after = gEngine.framesRendered.load(std::memory_order_relaxed);
+  return after > before;
+}
+
+// 打开一条新的 AAudio 流并启动。不检查回调是否在跑，由调用方决定。
+static bool openStream(int sampleRate) {
+  if (!gApi.load()) return false;
+
+  aaudio_builder_t* builder = nullptr;
+  aaudio_result_t r = gApi.createBuilder(&builder);
+  if (r != AAUDIO_OK_) {
+    LOGE("createStreamBuilder failed: %d", r);
+    return false;
+  }
+
+  gApi.setDirection(builder, AAUDIO_DIRECTION_OUTPUT_);
+  gApi.setPerformanceMode(builder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY_);
+  gApi.setFormat(builder, AAUDIO_FORMAT_PCM_FLOAT_);
+  gApi.setChannelCount(builder, 2);
+  gApi.setSampleRate(builder, sampleRate);
+  // 注意参数顺序：setDataCallback(builder, 回调, userData)
+  gApi.setDataCallback(builder, (void*)dataCallback, (void*)&gEngine);
+  gApi.setErrorCallback(builder, (void*)errorCallback, (void*)&gEngine);
+
+  aaudio_stream_t* stream = nullptr;
+  r = gApi.openStream(builder, &stream);
+  gApi.builderDelete(builder);
+  if (r != AAUDIO_OK_) {
+    LOGE("openStream failed: %d", r);
+    return false;
+  }
+
+  int actualRate = gApi.getSampleRate(stream);
+  gEngine.stream = stream;
+  // prepare() 必须在 requestStart 之前完成：它要重新分配混响缓冲、
+  // 清空 voice。放到流已经跑起来之后再调，等于在音频线程读缓冲时
+  // 释放重建，是竞态。
+  gEngine.prepare(actualRate);
+
+  r = gApi.requestStart(stream);
+  if (r != AAUDIO_OK_) {
+    LOGE("requestStart failed: %d", r);
+    if (gApi.requestStop) gApi.requestStop(stream);
+    if (gApi.closeStream) gApi.closeStream(stream);
+    gEngine.stream = nullptr;
+    return false;
+  }
+  LOGI("AAudio stream opened, sr=%d", actualRate);
+  return true;
+}
+
+// 关掉当前流（如果有）
+static void closeStream() {
+  if (!gEngine.stream) return;
+  if (gApi.requestStop) gApi.requestStop((aaudio_stream_t*)gEngine.stream);
+  if (gApi.closeStream) gApi.closeStream((aaudio_stream_t*)gEngine.stream);
+  gEngine.stream = nullptr;
+  gEngine.playing.store(false, std::memory_order_release);
+}
 
 aaudio_callback_result_t dataCallback(void* stream, void* userData,
                                       void* audioData, int32_t numFrames) {
@@ -510,55 +618,39 @@ extern "C" {
 
 JNIEXPORT jboolean JNICALL
 Java_com_shisihang_sonnet_NativeAudio_start(JNIEnv* env, jobject /*thiz*/, jint sampleRate) {
-  if (gEngine.stream) return JNI_TRUE;
-  // 运行时加载 AAudio：API 26 以下会失败，Java 侧退回 Web Audio
-  if (!gApi.load()) return JNI_FALSE;
+  // 已经开着就直接复用 —— 但必须确认回调线程还活着。
+  //
+  // 只判断 stream 非空是不够的：AAudio 流会因为音频焦点被别的应用抢走、
+  // 来电、蓝牙切换等原因被系统停掉（回调不再进入），而 gEngine.stream
+  // 这个指针还留着。此时 start() 直接返回成功，上层以为一切正常，
+  // 实际位置永远不推进——表现就是「点播放没有声音、进度条停在 0」，
+  // 而且之后每次播放都这样，只能杀进程。
+  if (gEngine.stream && callbackIsRunning(80)) {
+    return JNI_TRUE;
+  }
+  if (gEngine.stream) {
+    long long frames = gEngine.framesRendered.load(std::memory_order_relaxed);
+    LOGI("AAudio stream is stale (frames %lld), reopening", frames);
+    closeStream();
+  }
 
-  aaudio_builder_t* builder = nullptr;
-  aaudio_result_t r = gApi.createBuilder(&builder);
-  if (r != AAUDIO_OK_) {
-    LOGE("createStreamBuilder failed: %d", r);
+  if (!openStream(sampleRate)) return JNI_FALSE;
+
+  // 新流也要验证：系统可以在 openStream/requestStart 都返回成功的情况下
+  // 拒绝调度回调。这时别报成功，让 JS 退回 Web Audio。
+  if (!callbackIsRunning(80)) {
+    LOGE("AAudio started but callback never ran, giving up");
+    closeStream();
     return JNI_FALSE;
   }
 
-  gApi.setDirection(builder, AAUDIO_DIRECTION_OUTPUT_);
-  gApi.setPerformanceMode(builder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY_);
-  gApi.setFormat(builder, AAUDIO_FORMAT_PCM_FLOAT_);
-  gApi.setChannelCount(builder, 2);
-  gApi.setSampleRate(builder, sampleRate);
-  // 注意参数顺序：setDataCallback(builder, 回调, userData)
-  gApi.setDataCallback(builder, (void*)dataCallback, (void*)&gEngine);
-  gApi.setErrorCallback(builder, (void*)errorCallback, (void*)&gEngine);
-
-  aaudio_stream_t* stream = nullptr;
-  r = gApi.openStream(builder, &stream);
-  gApi.builderDelete(builder);
-  if (r != AAUDIO_OK_) {
-    LOGE("openStream failed: %d", r);
-    return JNI_FALSE;
-  }
-
-  int actualRate = gApi.getSampleRate(stream);
-  gEngine.stream = stream;
-  gEngine.prepare(actualRate);
-
-  r = gApi.requestStart(stream);
-  if (r != AAUDIO_OK_) {
-    LOGE("requestStart failed: %d", r);
-    return JNI_FALSE;
-  }
-
-  LOGI("AAudio started, sr=%d", actualRate);
   return JNI_TRUE;
 }
 
 JNIEXPORT void JNICALL
 Java_com_shisihang_sonnet_NativeAudio_stop(JNIEnv* env, jobject /*thiz*/) {
   if (!gEngine.stream) return;
-  if (gApi.requestStop) gApi.requestStop((aaudio_stream_t*)gEngine.stream);
-  if (gApi.closeStream) gApi.closeStream((aaudio_stream_t*)gEngine.stream);
-  gEngine.stream = nullptr;
-  gEngine.playing.store(false);
+  closeStream();
   LOGI("AAudio stopped");
 }
 
@@ -619,6 +711,29 @@ Java_com_shisihang_sonnet_NativeAudio_playScore(
   gEngine.bpm.store(bpm, std::memory_order_release);
   gEngine.currentBeat.store(0.0, std::memory_order_release);
   gEngine.underruns.store(0, std::memory_order_release);
+}
+
+JNIEXPORT void JNICALL
+Java_com_shisihang_sonnet_NativeAudio_setTempos(
+    JNIEnv* env, jobject /*thiz*/, jdoubleArray beats, jdoubleArray bpms, jint count) {
+  int n = std::max(0, std::min((int)count, MAX_TEMPO_POINTS));
+  if (n == 0) {
+    gEngine.tempoCount.store(0, std::memory_order_release);
+    return;
+  }
+  // 先落到临时缓冲再一次性提交计数：音频线程按 tempoCount 读，
+  // 边写边改计数会让它读到写了一半的表。
+  TempoPoint tmp[MAX_TEMPO_POINTS];
+  std::vector<double> b(n), m(n);
+  env->GetDoubleArrayRegion(beats, 0, n, b.data());
+  env->GetDoubleArrayRegion(bpms, 0, n, m.data());
+  for (int i = 0; i < n; i++) {
+    tmp[i].beat = b[i];
+    tmp[i].bpm = m[i] > 0 ? m[i] : 96.0;
+  }
+  gEngine.tempoCount.store(0, std::memory_order_release);
+  for (int i = 0; i < n; i++) gEngine.tempos[i] = tmp[i];
+  gEngine.tempoCount.store(n, std::memory_order_release);
 }
 
 JNIEXPORT void JNICALL

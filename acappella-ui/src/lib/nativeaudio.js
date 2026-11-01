@@ -21,6 +21,8 @@
 // 纯 Web 构建（npm run dev / 桌面浏览器）里 Capacitor 可能没有注入，
 // 静态 import 会让整个模块在加载期抛错，连带播放器一起崩。
 // 全部改成运行时探测 + try/catch。
+import { interleaveToInt16 } from './pcm.js'
+
 let pluginPromise = null
 let available = null
 
@@ -65,33 +67,12 @@ export async function isNativeAvailable() {
   return available
 }
 
-/** 同步读取上次探测的结果（还没探测过返回 false）。 */
-export function nativeAvailableSync() {
-  return available === true
-}
-
 // AudioBuffer → base64 的 16-bit PCM
 function bufferToBase64(buffer) {
   const ch = buffer.numberOfChannels
-  const frames = buffer.length
-  const total = frames * ch
-  const out = new Int16Array(total)
-  for (let c = 0; c < ch; c++) {
-    const data = buffer.getChannelData(c)
-    if (ch === 1) {
-      for (let i = 0; i < frames; i++) {
-        const v = Math.max(-1, Math.min(1, data[i]))
-        out[i] = v < 0 ? v * 0x8000 : v * 0x7fff
-      }
-    } else {
-      // 交织
-      for (let i = 0; i < frames; i++) {
-        const v = Math.max(-1, Math.min(1, data[i]))
-        out[i * ch + c] = v < 0 ? v * 0x8000 : v * 0x7fff
-      }
-    }
-  }
-  const bytes = new Uint8Array(out.buffer)
+  const channels = []
+  for (let c = 0; c < ch; c++) channels.push(buffer.getChannelData(c))
+  const bytes = new Uint8Array(interleaveToInt16(channels).buffer)
   let s = ''
   const CHUNK = 0x8000
   for (let i = 0; i < bytes.length; i += CHUNK) {
@@ -114,7 +95,11 @@ export class NativePlayer {
     this._total = 0
     this._from = 0
     this._bpm = 96
+    this._tempos = null          // [{beat, bpm}]，绝对拍，用于变速外推
     this.playing = false
+    // 最近一次轮询到的位置（相对 from，单位拍）。同步读，给 UI 每帧取值。
+    this._beat = 0
+    this._beatAt = 0            // 上次拿到 _beat 的时刻，用于两帧之间外推
   }
 
   async init() {
@@ -223,10 +208,35 @@ export class NativePlayer {
     this._total = total
     this._from = from
     this._bpm = bpm
+    this._beat = 0
+    // 起播时的基准位置。上层用它判断原生到底有没有真的走起来
+    // （不能用 beatNow()，它按 bpm 外推，流死了也照样涨）。
+    this._beat0 = 0
     this._onEnd = typeof opts.onEnd === 'function' ? opts.onEnd : null
 
     if (opts.volume != null) await this.plugin.setMasterGain({ gain: opts.volume })
     if (opts.reverbMix != null) await this.plugin.setReverbMix({ mix: opts.reverbMix })
+
+    // 速度表：原生侧按拍查速度推进播放头。事件已经按 fromBeat 平移过，
+    // 速度表也要一起平移（否则从中间起播时用的还是全曲的时间基准）。
+    if (this.plugin.setTempos) {
+      const map = Array.isArray(score.tempos) && score.tempos.length
+        ? score.tempos
+        : [{ beat: 0, bpm }]
+      const tb = []
+      const tm = []
+      for (const t of map) {
+        const b = (t.beat || 0) - from
+        if (b < -1e-9) continue          // 起播点之前的速度段用不到
+        tb.push(b)
+        tm.push(t.bpm || bpm)
+      }
+      // 第一段必须从 0 拍开始，否则起播点到第一个标记之间没有速度
+      if (!tb.length || tb[0] > 1e-9) { tb.unshift(0); tm.unshift(map[0].bpm || bpm) }
+      // 外推用的表要还原成绝对拍，和 this._from + beat 的口径一致
+      this._tempos = tb.map((b, i) => ({ beat: from + b, bpm: tm[i] }))
+      try { await this.plugin.setTempos({ beats: tb, bpms: tm }) } catch (e) { /* 老版本插件没有这个方法 */ }
+    }
 
     await this.plugin.playScore({
       beats, lengths, midis, velocities: vels, pans,
@@ -234,6 +244,9 @@ export class NativePlayer {
     })
     await this.plugin.play()
     this.playing = true
+    this._beat = 0
+    this._beat0 = 0
+    this._beatAt = performance.now()
     this._startPoll()
     return true
   }
@@ -245,12 +258,16 @@ export class NativePlayer {
       if (!this.plugin) return
       try {
         const r = await this.plugin.getPositionBeats()
-        if (r && !r.playing && this.playing) {
-          this.playing = false
-          this._stopPoll()
-          const cb = this._onEnd
-          this._onEnd = null
-          if (cb) cb()
+        if (r) {
+          this._beat = r.beat || 0
+          this._beatAt = performance.now()
+          if (!r.playing && this.playing) {
+            this.playing = false
+            this._stopPoll()
+            const cb = this._onEnd
+            this._onEnd = null
+            if (cb) cb()
+          }
         }
       } catch (e) { /* 桥接偶发失败忽略 */ }
     }, 50)
@@ -263,24 +280,58 @@ export class NativePlayer {
     }
   }
 
+  // 同步读当前位置（拍，绝对值）。给 UI 的逐帧循环用：
+  // 跨桥调用是异步的，放进 rAF 每帧 await 会把桥上的排队压到绘制路径上。
+  //
+  // 轮询是 20Hz、rAF 是 60Hz，直接返回轮询值就是「三帧才动一次」。
+  // 所以按「距离上次轮询过了多久」把位置往前推——播放速度是已知的
+  // （bpm），这个外推是准的。下一个轮询回来会覆盖它，不会累积漂移。
+  beatNow() {
+    if (!this.playing) return this._from + this._beat
+    const dt = Math.max(0, Math.min(0.1, (performance.now() - (this._beatAt || 0)) / 1000))
+    // 用当前位置的速度外推，不是全曲第一个速度：变速谱里中段会差出可见的量
+    const bpm = this._bpmAt(this._from + this._beat)
+    return this._from + this._beat + (dt * bpm) / 60
+  }
+
+  // 第 beat 拍（绝对拍）此刻的速度。没设过速度表就退回单一 bpm。
+  _bpmAt(beat) {
+    const map = this._tempos
+    if (!map || map.length < 2) return this._bpm
+    if (beat <= map[0].beat) return map[0].bpm
+    let lo = 0
+    let hi = map.length - 1
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1
+      if (map[mid].beat <= beat) lo = mid
+      else hi = mid - 1
+    }
+    return map[lo].bpm
+  }
+
   async getPositionBeats() {
-    if (!this.plugin) return 0
+    if (!this.plugin) return this._from
     try {
       const r = await this.plugin.getPositionBeats()
-      return r ? this._from + (r.beat || 0) : this._from
+      if (r) this._beat = r.beat || 0
+      return this._from + this._beat
     } catch (e) {
-      return this._from
+      return this._from + this._beat
     }
   }
 
   async pause() {
     if (this.plugin) await this.plugin.pause()
     this.playing = false
+    // 位置归零：留着旧值会让下一次读 beatNow 拿到上一首的位置
+    this._beat = 0
+    this._beatAt = 0
     this._stopPoll()
   }
 
   async seekToBeat(beat) {
     if (this.plugin) await this.plugin.seekToBeat({ beat })
+    this._beat = Math.max(0, beat || 0)
   }
 
   async setVolume(v) {

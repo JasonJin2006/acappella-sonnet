@@ -6,6 +6,8 @@
 // 一拍 = 一个四分音符，和内部格式一致；每小节按 score.bar 分。
 // 每个声部一个 track，第一个 track 放速度与拍号（format 1 的惯例）。
 
+import { floatToInt16 } from './pcm.js'
+
 const TICKS_PER_QUARTER = 480
 
 // 声部 id → 拼音缩写，放进 MIDI track name（必须是 ASCII）
@@ -91,16 +93,26 @@ export function scoreToMidi(score, opts = {}) {
 
   // ---- track 0：曲名 + 速度 + 拍号 ----
   {
-    const usPerQuarter = Math.round(60_000_000 / bpm)
+    const beatToUs = (b) => {
+      const us = Math.round(60_000_000 / Math.max(1, b))
+      return [0xff, 0x51, 0x03, (us >> 16) & 0xff, (us >> 8) & 0xff, us & 0xff]
+    }
     const events = [
       { tick: 0, order: 0, bytes: TRACK_NAME(safeAsciiTitle(score.title)) },
-      {
-        tick: 0,
-        order: 1,
-        bytes: [0xff, 0x51, 0x03, (usPerQuarter >> 16) & 0xff, (usPerQuarter >> 8) & 0xff, usPerQuarter & 0xff],
-      },
-      { tick: 0, order: 2, bytes: [0xff, 0x58, 0x04, bar, 2, 24, 8] }, // 拍号 n/4，每 24 clocks 一个 32 分音符
     ]
+    // 速度表：谱面中途变速时逐条写进 MIDI，DAW 里播放才是原速。
+    // 以前只写第一条，整首会被拉成一个速度。
+    const tempos = Array.isArray(score.tempos) && score.tempos.length
+      ? score.tempos
+      : [{ beat: 0, bpm }]
+    for (const t of tempos) {
+      events.push({
+        tick: Math.max(0, Math.round((t.beat || 0) * TICKS_PER_QUARTER)),
+        order: 1,
+        bytes: beatToUs(t.bpm || bpm),
+      })
+    }
+    events.push({ tick: 0, order: 2, bytes: [0xff, 0x58, 0x04, bar, 2, 24, 8] }) // 拍号 n/4，每 24 clocks 一个 32 分音符
     // C 大调（0 个升降号）。内部格式没存调号，用 0 最安全，
     // 音符本身带半音，调号只影响 DAW 里的显示。
     events.push({ tick: 0, order: 3, bytes: [0xff, 0x59, 0x02, 0, 0] })
@@ -109,7 +121,11 @@ export function scoreToMidi(score, opts = {}) {
 
   // ---- 每个声部一个 track ----
   parts.forEach((part, pi) => {
-    const channel = Math.min(15, (opts.channelStart == null ? 0 : opts.channelStart) + pi)
+    // 通道 9（从 0 数）是 General MIDI 的打击乐通道，旋律声部落上去会变成
+    // 鼓声。声部多于 9 个时自动跳过它，而不是把两个声部挤到同一个通道。
+    const start = opts.channelStart == null ? 0 : opts.channelStart
+    const wanted = start + pi
+    const channel = Math.min(15, wanted >= 9 ? wanted + 1 : wanted)
     const program = opts.program == null ? 0 : Math.max(0, Math.min(127, opts.program))
     const velocity = opts.velocity == null ? 88 : Math.max(1, Math.min(127, opts.velocity))
     const events = []
@@ -119,16 +135,43 @@ export function scoreToMidi(score, opts = {}) {
     events.push({ tick: 0, order: 1, bytes: INSTRUMENT_NAME(label + ' ' + (part.name || '')) })
     events.push({ tick: 0, order: 2, bytes: [0xc0 | channel, program] })
     let beat = 0
-    for (const n of part.notes) {
+    for (let i = 0; i < part.notes.length; i++) {
+      const n = part.notes[i]
       const dur = Math.max(0, n.beats || 0)
       if (n.midi != null && dur > 1e-6) {
-        const start = Math.round(beat * TICKS_PER_QUARTER)
-        const end = Math.round((beat + dur) * TICKS_PER_QUARTER)
+        const startTick = Math.round(beat * TICKS_PER_QUARTER)
+        const end = beat + dur
+        const endTick = Math.round(end * TICKS_PER_QUARTER)
         // 力度：没标就用默认 velocity，标了按比例换算成 MIDI 力度值
-        const vel = n.vel == null ? velocity : Math.max(1, Math.min(127, Math.round(velocity * (n.vel / 0.58))))
-        events.push({ tick: start, order: 2, bytes: [0x90 | channel, n.midi & 0x7f, vel] })
-        // 留 95% 时值，同音反复才听得出来是两个音（和播放引擎的做法一致）
-        const off = Math.max(start + 1, Math.round(start + (end - start) * 0.95))
+        let vel = n.vel == null ? velocity : Math.max(1, Math.min(127, Math.round(velocity * (n.vel / 0.58))))
+        // 重音在 MIDI 里也用力度表达，和播放引擎一致
+        if (n.accent === 1) vel = Math.min(127, Math.round(vel * 1.25))
+        else if (n.accent >= 2) vel = Math.min(127, Math.round(vel * 1.5))
+        events.push({ tick: startTick, order: 2, bytes: [0x90 | channel, n.midi & 0x7f, vel] })
+
+        // 滑音：MIDI 用 pitch bend 表达。这里写成"起音后快速弯到目标音"，
+        // 弯音在目标音开始时回到中心。不做这一步，导出的 MIDI 里滑音
+        // 会完全消失（谱面上有、声音里没有）。
+        const next = part.notes[i + 1]
+        if (n.gliss && next && next.midi != null) {
+          const semis = next.midi - n.midi
+          const bendRange = 2   // 标准 GM 弯音范围 ±2 个半音
+          if (Math.abs(semis) <= bendRange * 12) {
+            const amount = Math.max(-8192, Math.min(8191, Math.round((semis / bendRange) * 8192)))
+            const glideTicks = Math.min(endTick - startTick, TICKS_PER_QUARTER / 2)
+            events.push({ tick: startTick, order: 3, bytes: [0xe0 | channel, 0x00, 0x40] })
+            events.push({
+              tick: startTick + glideTicks, order: 3,
+              bytes: [0xe0 | channel, amount & 0x7f, ((amount >> 7) & 0x7f)],
+            })
+            events.push({ tick: endTick, order: 3, bytes: [0xe0 | channel, 0x00, 0x40] })
+          }
+        }
+
+        // 留 95% 时值，同音反复才听得出来是两个音（和播放引擎的做法一致）；
+        // 跳音压到 50%，连音线里不压缩。
+        const keep = n.staccato ? 0.5 : (n.slurStop || n.slurStart) ? 1.0 : 0.95
+        const off = Math.max(startTick + 1, Math.round(startTick + (endTick - startTick) * keep))
         events.push({ tick: off, order: 1, bytes: [0x80 | channel, n.midi & 0x7f, 0] })
       }
       beat += dur
@@ -194,14 +237,11 @@ export function encodeWav(channels, sampleRate) {
   view.setUint16(34, 16, true)
   writeStr(36, 'data')
   view.setUint32(40, dataBytes, true)
-  // 交错写入 + 削顶保护：|x|>1 时软压到 ±1，避免爆音
+  // 交错写入。钳位与 16-bit 换算在 pcm.js，四份实现共用一份。
   let off = 44
   for (let i = 0; i < frames; i++) {
     for (let ch = 0; ch < numCh; ch++) {
-      let x = channels[ch][i] || 0
-      if (x > 1) x = 1
-      else if (x < -1) x = -1
-      view.setInt16(off, x < 0 ? x * 0x8000 : x * 0x7fff, true)
+      view.setInt16(off, floatToInt16(channels[ch][i]), true)
       off += 2
     }
   }
