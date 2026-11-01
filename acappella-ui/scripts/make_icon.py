@@ -17,6 +17,9 @@ BG_TOP = (7, 26, 34)      # 深墨绿蓝
 BG_BOTTOM = (13, 46, 54)  # 稍亮的深青
 BAR_HI = (26, 204, 188)   # 品牌青（高亮声部）
 BAR_DIM = (82, 124, 134)  # 暗青灰（其余声部），提亮保证小尺寸可见
+# 前景图（叠在 ic_launcher_background #09090B 上）用更亮的灰，避免暗条糊进深背景
+FG_DIM = (168, 196, 202)
+FG_SIZE = 66              # 前景图占画布比例（自适应图标安全区 66/108 ≈ 61%）
 
 
 def vertical_gradient(size, top, bottom):
@@ -31,7 +34,7 @@ def vertical_gradient(size, top, bottom):
     return base.resize((w, h), Image.BILINEAR)
 
 
-def draw_logo(size=(1024, 1024), scale=1.0):
+def draw_logo(size=(1024, 1024), scale=1.0, colors=None):
     """在 1024 基准坐标里画四条声浪竖条，返回 RGBA 图（任意 size 输出）。"""
     img = Image.new("RGBA", (1024, 1024), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -40,7 +43,7 @@ def draw_logo(size=(1024, 1024), scale=1.0):
     GAP = 64                # 条间距（≈0.54×条宽，四根条读作一个整体）
     # 高度节奏像一句旋律的起伏；高亮条（第 2 根）居中偏左，视觉重心不偏
     heights = [330, 600, 440, 260]
-    colors = [BAR_DIM, BAR_HI, BAR_DIM, BAR_DIM]
+    colors = colors or [BAR_DIM, BAR_HI, BAR_DIM, BAR_DIM]
     xs = [512 + (i - 1.5) * (W + GAP) for i in range(4)]
     mid = 556               # 垂直中心略偏下，顶部留出动势
     for cx, h, c in zip(xs, heights, colors):
@@ -49,6 +52,23 @@ def draw_logo(size=(1024, 1024), scale=1.0):
     return img.resize(
         (round(size[0] * scale), round(size[1] * scale)), Image.LANCZOS
     )
+
+
+def make_foreground(path):
+    """自适应图标前景：透明背景 + 四根竖条。
+    必须带 alpha 通道，并命名为 icon-foreground.png —— @capacitor/assets 把
+    icon-only.png 读作普通 icon，只有 icon-foreground 才会生成
+    ic_launcher_foreground.png（现代 Android 自适应图标实际使用的那张）。
+    占画布 FG_SIZE%，落进安全区，系统裁切时不切到图形。"""
+    canvas = Image.new("RGBA", (1024, 1024), (0, 0, 0, 0))
+    logo = draw_logo(scale=FG_SIZE / 100, colors=[FG_DIM, BAR_HI, FG_DIM, FG_DIM])
+    canvas.alpha_composite(logo, ((1024 - logo.width) // 2, (1024 - logo.height) // 2))
+    canvas.save(path)
+
+
+def make_icon_background(path):
+    """自适应图标背景：纯深色，与 values/ic_launcher_background.xml 的 #09090B 一致。"""
+    Image.new("RGB", (1024, 1024), (9, 9, 11)).save(path)
 
 
 def glow(img, radius, alpha):
@@ -97,7 +117,14 @@ def main():
         make_icon(out)
         print(out)
         return
+    # 三个输入各司其职：
+    #   icon-only.png      普通图标（旧式 ic_launcher.png、网页图标）
+    #   icon-foreground.png 自适应图标前景（透明），生成 ic_launcher_foreground.png
+    #   icon-background.png 自适应图标背景，生成 mipmap 背景
+    # 只给 icon-only 时，现代 Android 读的还是旧的图，这是之前「图标没变」的根因。
     make_icon(ASSETS / "icon-only.png")
+    make_foreground(ASSETS / "icon-foreground.png")
+    make_icon_background(ASSETS / "icon-background.png")
     make_splash(ASSETS / "splash.png")
     make_splash(ASSETS / "splash-dark.png")
     make_web(Path(__file__).resolve().parent.parent / "public")
