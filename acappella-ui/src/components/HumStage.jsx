@@ -88,8 +88,9 @@ export default function HumStage({ bpm, bar, theme, disabled, result, onResult, 
   }, [result, tempo, bar])
 
   return (
-    <div className="flex h-full flex-col gap-2 px-4 pb-3">
-      {/* px-4/pb-3 与设置页、谱库页对齐。原来只有 px-3 pb-2 且**没有 pt**，
+    <div className="flex h-full flex-col gap-2 px-4 pb-3 pt-3">
+      {/* pt-3 与设置页、谱库页对齐：卡片不能紧贴上面的标签栏。
+          px-4/pb-3 同理，原来只有 px-3 pb-2 且没有 pt，
           卡片会紧贴上面的标签栏，右边也贴屏（实测练唱页右边距 0px）。 */}
       <div className="shrink-0 rounded-xl border bg-card/70 px-3 py-2.5 backdrop-blur-sm">
         <div className="flex items-center gap-1.5">
