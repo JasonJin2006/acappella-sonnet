@@ -16,6 +16,11 @@ acappella-ui/android/.idea/
 __pycache__/
 *.pyc
 
+# 本地环境变量（含 OMR 口令，不进仓库）
+.env
+.env.local
+.env.*.local
+
 # 本机工具与调试痕迹（不随仓库走）
 .qa/
 .workbuddy/

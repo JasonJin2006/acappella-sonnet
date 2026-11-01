@@ -14,8 +14,8 @@
 // 鉴权
 // ----
 // 公网服务必须带 token，否则任何人都能拿这台机器跑 Audiveris（吃满内存）。
-// token 放在下面的 TOKEN 常量里，随 APK 分发——这是一个「够用就好」的选择：
-// 它挡住的是扫端口的爬虫和随手试试的人，挡不住专门逆向 APK 的人。
+// token 在构建时从 VITE_OMR_TOKEN 注入，随 APK 分发——这是一个「够用就好」
+// 的选择：它挡住的是扫端口的爬虫和随手试试的人，挡不住专门逆向 APK 的人。
 // 真要防住后者，得做账号体系。
 //
 // 新服务端字段（客户端全部按「可以没有」处理）
@@ -32,8 +32,12 @@
 // 排队时 2~4 秒查一次，识别收尾时 0.7 秒查一次；网络抖动/5xx/超时自动重试
 // 3 次。任务在服务端保留 1 小时，所以掉一次线不等于要重新上传。
 
+// 服务口令走构建时注入，不写进仓库。
+// 本地构建前在 acappella-ui/.env.local 里写 VITE_OMR_TOKEN=<口令>；
+// 换机器或新克隆仓库时必须补上，否则服务端返回 401。
+// 口令本身在服务端 ~/sonnet-omr/token.txt，见 scripts/OMR-SERVER.md。
 const BASE = 'https://101.43.109.115:443'
-const TOKEN = '3901b08123ffd3c6c63fef2e188e05bf27d47a5eab48ef82'
+const TOKEN = import.meta.env.VITE_OMR_TOKEN || ''
 
 const POLL_MS = 1500              // 老服务器没有 progress 时的兜底节奏
 const QUEUED_SLOW_MS = 4000       // 前面排了 4 个以上
@@ -61,12 +65,9 @@ let lastJobMs = null
 
 function authHeaders(extra) {
   const h = { ...(extra || {}) }
-  // 保持原有行为：只有 TOKEN 被换成非默认值时才带 X-Token。
-  // （默认值是否发送是部署侧的取舍，不在本次性能改动里改。）
-  // TODO(deploy): 若服务器 token.txt 恰好等于下面这个默认串，这行会让每个请求
-  // 都不带 X-Token 而拿到 401（上传和轮询都坏）。部署前在服务器上 `cat
-  // ~/sonnet-omr/token.txt` 比对；相同就删掉 `!==` 条件并重新打 APK。
-  if (TOKEN && TOKEN !== '3901b08123ffd3c6c63fef2e188e05bf27d47a5eab48ef82') h['X-Token'] = TOKEN
+  // 没配 VITE_OMR_TOKEN 时不发这个头：服务端配了 token.txt 会直接 401，
+  // 比带着空串去撞更容易在日志里看出是配置问题。
+  if (TOKEN) h['X-Token'] = TOKEN
   return h
 }
 
