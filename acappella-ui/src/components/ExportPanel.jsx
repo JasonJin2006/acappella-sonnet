@@ -148,7 +148,7 @@ export default function ExportPanel({ score, settings }) {
   const disabled = busy != null
 
   return (
-    <div className="space-y-2.5">
+    <div className="space-y-2.5 px-4 pb-8 pt-3">
       <p className="text-[11px] leading-relaxed text-muted-foreground">
         当前谱面：{score.parts.length} 个声部、约 {seconds} 秒。全部在本机渲染，不上传。
       </p>

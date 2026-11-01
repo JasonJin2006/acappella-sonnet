@@ -122,7 +122,7 @@ export default function ProjectPanel({
   const takeCount = (current?.takes || []).filter((t) => t.buffer).length
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 px-4 pb-8 pt-3">
       <div>
         <div className="text-[12px] font-medium">当前工程</div>
         <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
